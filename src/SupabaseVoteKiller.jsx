@@ -1,11 +1,13 @@
-// SupabaseVoteDemo.jsx – client‑side aggregation fallback
+// SupabaseVoteDemo.jsx – named x‑ticks + thumbnail icons + live updates
 // -----------------------------------------------------------------------------
-// PostgREST’s aggregate syntax is fiddly and still returning 400s in the
-// user’s project.  For just 12 images, we can download the small votes table
-// (image_id column only) and count client‑side—simpler, 100% reliable.
+// • Associates each image with a character name.
+// • X‑axis shows the name instead of #id.
+// • Custom Chart.js plugin draws a 20 px thumbnail under each tick for quick
+//   visual association.
+// • Keeps the 3‑second polling + immediate refresh on vote.
 // -----------------------------------------------------------------------------
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ---- Chart.js setup --------------------------------------------------------
@@ -25,21 +27,67 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// ---- 12 local images -------------------------------------------------------
+// ---- Images + character names ---------------------------------------------
+const NAMES = [
+  "D. Poiré",
+  "Jane Blond",
+  "D. Doubledork",
+  "The Director",
+  "Dr. Lafayette",
+  "Spiderman",
+  "Mew‑the‑ripper",
+  "Researcher Catnip",
+  "QTRobot",
+  "Pepper",
+  "Freaky Franka",
+  "Greta",
+];
+
 const IMAGES = Array.from({ length: 12 }, (_, i) => {
   const id = i + 1;
   return {
     id,
+    name: NAMES[i],
     src: `photos/${id}.jpg`,
-    alt: `Photo ${id}`,
   };
 });
+
+// ---- Thumbnail plugin ------------------------------------------------------
+// Draws small images beneath each x‑axis tick label.
+const thumbs = IMAGES.map((img) => {
+  const image = new window.Image();
+  image.src = img.src;
+  return image;
+});
+
+const thumbPlugin = {
+  id: "xThumbs",
+  afterDraw(chart, _args, opts) {
+    const { ctx, chartArea, scales } = chart;
+    const size = opts.size || 20;
+    const yOffset = opts.offset || 6;
+    scales.x.ticks.forEach((tick, index) => {
+      const xPos = scales.x.getPixelForTick(index);
+      const img = thumbs[index];
+      if (!img.complete) {
+        img.onload = () => chart.draw();
+      }
+      // draw centered
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(xPos - size / 2, chartArea.bottom + yOffset, size, size);
+      ctx.clip();
+      ctx.drawImage(img, xPos - size / 2, chartArea.bottom + yOffset, size, size);
+      ctx.restore();
+    });
+  },
+};
+ChartJS.register(thumbPlugin);
 
 export default function SupabaseVoteDemo() {
   const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSelected] = useState(null);
   const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
 
   // --- Ask for a name -------------------------------------------------------
   useEffect(() => {
@@ -53,7 +101,7 @@ export default function SupabaseVoteDemo() {
     }
   }, [user]);
 
-  // --- Pre‑load user’s previous vote (if any) ------------------------------
+  // --- Pre‑load user’s previous vote ---------------------------------------
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -66,6 +114,28 @@ export default function SupabaseVoteDemo() {
     })();
   }, [user]);
 
+  // --- Fetch histogram counts (client‑side aggregation) -------------------
+  const fetchResults = async () => {
+    const { data, error } = await supabase.from("votes").select("image_id");
+    if (error) {
+      console.error("Fetch results error:", error);
+      return;
+    }
+    const countsMap = new Map();
+    data.forEach(({ image_id }) => {
+      countsMap.set(image_id, (countsMap.get(image_id) || 0) + 1);
+    });
+    const counted = Array.from(countsMap.entries()).map(([image_id, count]) => ({ image_id, count }));
+    setResults(counted);
+  };
+
+  // --- Poll every 3 s -------------------------------------------------------
+  useEffect(() => {
+    fetchResults(); // initial
+    const id = setInterval(fetchResults, 3000);
+    return () => clearInterval(id);
+  }, []);
+
   // --- Vote handler ---------------------------------------------------------
   const castVote = async (imageId) => {
     if (!user) return;
@@ -74,89 +144,74 @@ export default function SupabaseVoteDemo() {
       .from("votes")
       .upsert({ user_name: user, image_id: imageId }, { onConflict: "user_name" });
     if (error) console.error("Vote error:", error);
+    fetchResults(); // refresh ASAP
   };
 
-  // --- Fetch histogram counts (client‑side aggregation) -------------------
-  const fetchResults = async () => {
-    setLoading(true);
-
-    const { data, error } = await supabase.from("votes").select("image_id");
-
-    if (error) {
-      console.error("Fetch results error:", error);
-      setLoading(false);
-      return;
-    }
-
-    // Count occurrences of each image_id
-    const countsMap = new Map();
-    data.forEach(({ image_id }) => {
-      countsMap.set(image_id, (countsMap.get(image_id) || 0) + 1);
-    });
-
-    const counted = Array.from(countsMap.entries()).map(([image_id, count]) => ({
-      image_id,
-      count,
-    }));
-
-    setResults(counted);
-    setLoading(false);
-  };
-
-  // --- Convert to Chart.js dataset ----------------------------------------
-  const chartData = () => {
+  // --- Chart data & options (memoised) -------------------------------------
+  const { data, options } = useMemo(() => {
     const counts = IMAGES.map((img) => {
       const row = results?.find((r) => r.image_id === img.id);
       return row ? row.count : 0;
     });
+
     return {
-      labels: IMAGES.map((img) => `#${img.id}`),
-      datasets: [
-        {
-          label: "Votes",
-          data: counts,
+      data: {
+        labels: IMAGES.map((img) => img.name),
+        datasets: [
+          {
+            label: "Votes",
+            data: counts,
+            backgroundColor: "rgba(54, 162, 235, 0.6)",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { bottom: 40 } },
+        plugins: {
+          legend: { display: false },
+          xThumbs: { size: 20, offset: 6 },
         },
-      ],
+        scales: {
+          x: {
+            ticks: {
+              maxRotation: 0,
+              autoSkip: false,
+              font: { size: 10 },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            precision: 0,
+          },
+        },
+      },
     };
-  };
+  }, [results]);
 
   // --- Render --------------------------------------------------------------
   return (
     <div className="p-4 max-w-screen-lg mx-auto">
-      <h1 className="text-3xl font-bold mb-6 text-center">
-        Vote for your favourite image
-      </h1>
+      <h1 className="text-3xl font-bold mb-6 text-center">Vote for your favourite image</h1>
 
       {/* Image grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {IMAGES.map((img) => (
           <figure
             key={img.id}
-            className={`cursor-pointer rounded-xl overflow-hidden border-4 transition-shadow duration-200 ${
-              selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"
-            }`}
+            className={`cursor-pointer rounded-xl overflow-hidden border-4 transition-shadow duration-200 ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}`}
             onClick={() => castVote(img.id)}
           >
-            <img src={img.src} alt={img.alt} className="w-full h-auto" />
+            <img src={img.src} alt={img.name} className="w-full h-auto" />
           </figure>
         ))}
       </div>
 
-      {/* Show results button */}
-      <div className="flex justify-center mt-6">
-        <button
-          onClick={fetchResults}
-          className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50"
-          disabled={loading}
-        >
-          {loading ? "Loading…" : "Show results"}
-        </button>
-      </div>
-
       {/* Histogram */}
       {results && (
-        <div className="mt-8">
-          <Bar data={chartData()} />
+        <div className="mt-8 bg-white rounded-xl p-4 shadow-md" style={{ height: "360px" }}>
+          <Bar data={data} options={options} />
         </div>
       )}
     </div>
