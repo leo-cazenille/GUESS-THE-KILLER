@@ -1,5 +1,5 @@
-// SupabaseVoteDemo.jsx – 100 px thumbs, wrap labels, 0‑100 % y‑scale, no rotation
-//------------------------------------------------------------------------------------------------------------------
+// SupabaseVoteDemo.jsx – fixes: orphan token removed, “Mew the ripper”, smaller phone font
+// -------------------------------------------------------------------------------------------------
 import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -19,7 +19,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// Characters & images
+// Character names (dash removed)
 const NAMES = [
   "D. Poiré",
   "Jane Blond",
@@ -27,7 +27,7 @@ const NAMES = [
   "The Director",
   "Dr. Lafayette",
   "Spiderman",
-  "Mew‑the‑ripper",
+  "Mew the ripper", // changed here
   "Researcher Catnip",
   "QTRobot",
   "Pepper",
@@ -41,7 +41,7 @@ const IMAGES = Array.from({ length: 12 }, (_, i) => ({
   src: `photos/${i + 1}.jpg`,
 }));
 
-// ---- Thumbnail plugin (100 px icons) --------------------------------------
+// ----- Thumbnail plugin (100 px icons) --------------------------------------
 const thumbs = IMAGES.map((i) => {
   const img = new Image();
   img.src = i.src;
@@ -200,14 +200,14 @@ export default function SupabaseVoteDemo() {
               alt={img.name}
               className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover"
             />
-            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-sm sm:text-base font-bold py-1 sm:py-2 uppercase tracking-wider">
+            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-xs sm:text-sm md:text-base font-bold py-0.5 sm:py-1 md:py-2 uppercase tracking-wider">
               {img.name}
             </figcaption>
           </figure>
         ))}
       </div>
 
-      {/* Histogram */} */}
+      {/* Histogram */}
       {results && (
         <div className="mt-12 bg-white rounded-xl p-6 shadow-md" style={{ height: "650px" }}>
           <h2 className="text-2xl font-semibold text-center mb-4">
