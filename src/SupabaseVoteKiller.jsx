@@ -1,7 +1,10 @@
-// SupabaseVoteKiller.jsx
-// Quick single‑file demo front‑end.  Drop this into a Vite/React project,
-// add Tailwind & Chart.js, and supply your Supabase URL + anon key via
-// environment variables.  (See README notes in the chat reply.)
+// SupabaseVoteDemo.jsx – local photos version
+// ---------------------------------------------------------------------
+// Replaces remote Picsum placeholders with **your own 12 images**.
+// Drop JPG/PNG files in `public/photos/` (e.g. `public/photos/1.jpg … 12.jpg`).
+// Vite serves everything inside `public/` at the site root, so the <img src>
+// path can be `/photos/<filename>`.
+// ---------------------------------------------------------------------
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -23,26 +26,26 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// ---- 12 demo images (Picsum placeholders) ----------------------------------
+// ---- 12 local images -------------------------------------------------------
+// Put files 1.jpg … 12.jpg (or .png) under `public/photos/`.
+// Adjust the array if you prefer custom filenames.
 const IMAGES = Array.from({ length: 12 }, (_, i) => {
   const id = i + 1;
   return {
     id,
-    src: `https://picsum.photos/id/${100 + id}/500/300`,
-    alt: `Demo image ${id}`,
+    src: `/photos/${id}.jpg`, // or .png—match your actual extension
+    alt: `Photo ${id}`,
   };
 });
 
 export default function SupabaseVoteDemo() {
   // --- Local state ---------------------------------------------------------
-  const [user, setUser] = useState(
-    () => localStorage.getItem("voter_name") || ""
-  );
+  const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSelected] = useState(null);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // --- Ask for a name (one‑liner prompt for demo purposes) ------------------
+  // --- Ask for a name -------------------------------------------------------
   useEffect(() => {
     if (!user) {
       const name = window.prompt("Enter your name to vote:");
@@ -67,14 +70,14 @@ export default function SupabaseVoteDemo() {
     })();
   }, [user]);
 
-  // --- Vote handler (UPSERT on (user_name) unique key) ---------------------
+  // --- Vote handler ---------------------------------------------------------
   const castVote = async (imageId) => {
     if (!user) return;
     setSelected(imageId); // optimistic UI
-    await supabase.from("votes").upsert(
-      { user_name: user, image_id: imageId },
-      { onConflict: "user_name" }
-    );
+    const { error } = await supabase
+      .from("votes")
+      .upsert({ user_name: user, image_id: imageId }, { onConflict: "user_name" });
+    if (error) console.error("Vote error:", error);
   };
 
   // --- Fetch histogram counts ---------------------------------------------
@@ -82,9 +85,15 @@ export default function SupabaseVoteDemo() {
     setLoading(true);
     const { data, error } = await supabase
       .from("votes")
-      .select("image_id, count(*)")
-      .group("image_id");
-    if (!error) setResults(data);
+      .select("image_id, count", { group: "image_id" });
+
+    if (error) {
+      console.error("Fetch results error:", error);
+      setLoading(false);
+      return;
+    }
+
+    setResults(data);
     setLoading(false);
   };
 
@@ -100,7 +109,6 @@ export default function SupabaseVoteDemo() {
         {
           label: "Votes",
           data: counts,
-          // No color specified ⇒ Chart.js default palette
         },
       ],
     };
@@ -132,7 +140,8 @@ export default function SupabaseVoteDemo() {
       <div className="flex justify-center mt-6">
         <button
           onClick={fetchResults}
-          className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium"
+          className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50"
+          disabled={loading}
         >
           {loading ? "Loading…" : "Show results"}
         </button>
