@@ -1,5 +1,5 @@
-// App.jsx – two‑page version (VoteGrid & ResultsPage) with React Router
-// ---------------------------------------------------------------------------------------------
+// App.jsx – complete two‑page app (VoteGrid + ResultsPage) with YouTube subtitles
+//------------------------------------------------------------------------------------------------------------------
 import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -18,7 +18,7 @@ import {
   Link,
   Navigate,
 } from "react-router-dom";
-import QRCode from "qrcode.react";
+import { QRCodeCanvas as QRCode } from "qrcode.react";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 // ---- Supabase -------------------------------------------------------------
@@ -48,12 +48,25 @@ const IMAGES = Array.from({ length: 12 }, (_, i) => ({
   src: `photos/${i + 1}.jpg`,
 }));
 
-// ---- Vote hook (shared) ----------------------------------------------------
+// ---- Utility: fetch YouTube transcript (public captions) ------------------
+async function fetchYoutubeTranscript(id, lang = "en") {
+  try {
+    const res = await fetch(
+      `https://youtubetranscript.com/?format=json&video_id=${id}&lang=${lang}`
+    );
+    if (!res.ok) throw new Error("No transcript or CORS blocked");
+    return await res.json(); // array of {text,start,duration}
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+// ---- Shared vote hook -----------------------------------------------------
 function useVotes() {
   const [results, setResults] = useState(null);
   const fetchResults = async () => {
-    const { data, error } = await supabase.from("votes").select("image_id");
-    if (error) return console.error(error);
+    const { data } = await supabase.from("votes").select("image_id");
     const map = new Map();
     data.forEach(({ image_id }) => map.set(image_id, (map.get(image_id) || 0) + 1));
     setResults([...map.entries()].map(([image_id, count]) => ({ image_id, count })));
@@ -66,13 +79,13 @@ function useVotes() {
   return { results, refresh: fetchResults };
 }
 
-// ---- VoteGrid page --------------------------------------------------------
+// ---- VoteGrid page (default /) -------------------------------------------
 function VoteGrid() {
   const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSelected] = useState(null);
-  const { results, refresh } = useVotes();
+  const { refresh } = useVotes(); // only need refresh for optimistic update
 
-  // prompt name once
+  // prompt username once
   useEffect(() => {
     if (!user) {
       const n = window.prompt("Enter your name to vote:");
@@ -97,7 +110,6 @@ function VoteGrid() {
     })();
   }, [user]);
 
-  // cast vote
   const castVote = async (id) => {
     if (!user) return;
     setSelected(id);
@@ -120,11 +132,7 @@ function VoteGrid() {
             className={`relative cursor-pointer rounded-lg overflow-hidden border-2 md:border-4 transition-shadow duration-200 ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}`}
             onClick={() => castVote(img.id)}
           >
-            <img
-              src={img.src}
-              alt={img.name}
-              className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover"
-            />
+            <img src={img.src} alt={img.name} className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover" />
             <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-xs sm:text-sm md:text-base font-bold py-0.5 sm:py-1 md:py-2 uppercase tracking-wider">
               {img.name}
             </figcaption>
@@ -132,7 +140,6 @@ function VoteGrid() {
         ))}
       </div>
 
-      {/* link to results page */}
       <p className="text-center mt-6">
         <Link to="/results" className="text-blue-600 underline">
           See live results
@@ -142,34 +149,23 @@ function VoteGrid() {
   );
 }
 
-// ---- Histogram component (reusable) ---------------------------------------
-function Histogram({ orientation = "vertical", results }) {
-  const total = results?.reduce((sum, r) => sum + r.count, 0) || 0;
+// ---- Histogram component --------------------------------------------------
+function Histogram({ results }) {
+  const total = results?.reduce((s, r) => s + r.count, 0) || 0;
   const perc = IMAGES.map((img) => {
     const c = results?.find((r) => r.image_id === img.id)?.count || 0;
     return total ? ((c / total) * 100).toFixed(2) : 0;
   });
-  const wrap = (s) => {
-    const i = s.indexOf(" ");
-    return i > 0 ? [s.slice(0, i), s.slice(i + 1)] : [s];
-  };
   const data = {
-    labels: IMAGES.map((i) => wrap(i.name)),
-    datasets: [{
-      label: "%",
-      data: perc,
-      backgroundColor: "rgba(54,162,235,0.8)",
-      barPercentage: 0.9,
-      categoryPercentage: 0.9,
-    }],
+    labels: IMAGES.map((i) => i.name.split(" ").join("\n")),
+    datasets: [{ data: perc, backgroundColor: "rgba(54,162,235,0.8)" }],
   };
   const options = {
-    indexAxis: orientation === "horizontal" ? "y" : "x",
-    responsive: true,
+    indexAxis: "y",
     maintainAspectRatio: false,
     scales: {
-      x: { max: orientation === "horizontal" ? 100 : undefined, ticks: { callback: (v) => v + "%" } },
-      y: { max: orientation === "vertical" ? 100 : undefined, ticks: { callback: (v) => v + "%" } },
+      x: { max: 100, ticks: { callback: (v) => v + "%" } },
+      y: { ticks: { autoSkip: false } },
     },
     plugins: { legend: { display: false } },
   };
@@ -179,29 +175,46 @@ function Histogram({ orientation = "vertical", results }) {
 // ---- ResultsPage ----------------------------------------------------------
 function ResultsPage() {
   const { results } = useVotes();
+  const VIDEO_ID = "hooHIkOQXdg";
+  const [subs, setSubs] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const s = await fetchYoutubeTranscript(VIDEO_ID);
+      setSubs(s);
+    })();
+  }, []);
+
   return (
     <div className="p-2 md:p-4 max-w-screen-2xl mx-auto flex flex-col md:flex-row gap-4" style={{ height: "100vh" }}>
-      {/* Left column (video + subtitles) */}
+      {/* Video & subtitles */}
       <div className="flex-1 flex flex-col">
-        <div className="aspect-w-16 aspect-h-9 w-full h-auto">
+        <div className="aspect-w-16 aspect-h-9 w-full">
           <iframe
-            src="https://www.youtube.com/embed/dQw4w9WgXcQ"
-            title="YouTube video"
+            src={`https://www.youtube.com/embed/${VIDEO_ID}?cc_load_policy=1`}
+            title="YT video"
+            className="w-full h-full rounded-lg"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
-            className="w-full h-full rounded-lg"
-          ></iframe>
+          />
         </div>
-        <div className="mt-2 bg-black/80 text-white p-2 rounded-lg flex-1 overflow-auto text-sm">
-          {/* Placeholder subtitles */}
-          <p>[00:00] Subtitles will appear here...</p>
+        <div className="mt-2 bg-black/80 text-white p-2 rounded-lg flex-1 overflow-auto text-sm leading-snug">
+          {subs ? (
+            subs.map((l, i) => (
+              <p key={i} className="whitespace-pre-line">
+                [{new Date(l.start * 1000).toISOString().substr(14, 5)}] {l.text}
+              </p>
+            ))
+          ) : (
+            <p>Loading subtitles…</p>
+          )}
         </div>
       </div>
 
-      {/* Right column (histogram + QR) */}
+      {/* Histogram & QR */}
       <div className="w-full md:w-96 flex flex-col">
         <div className="flex-1 bg-white rounded-lg shadow-md p-4 mb-4">
-          {results && <Histogram orientation="vertical" results={results} />}
+          {results && <Histogram results={results} />}
         </div>
         <div className="self-end">
           <QRCode value="https://leo-cazenille.github.io/GUESS-THE-KILLER/" size={128} />
@@ -211,7 +224,7 @@ function ResultsPage() {
   );
 }
 
-// ---- Router wrapper -------------------------------------------------------
+// ---- Router ----------------------------------------------------------------
 export default function App() {
   return (
     <Router>
