@@ -186,23 +186,28 @@ export default function SupabaseVoteDemo() {
         Who do you think is the real killer? <span className="text-lg font-normal">[User: {user || "?"}]</span>
       </h1>
 
-      {/* Images */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
+      {/* Images – always 3×4 grid, small gaps so full grid fits on phone */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
         {IMAGES.map((img) => (
           <figure
             key={img.id}
-            className={`relative cursor-pointer rounded-xl overflow-hidden border-4 transition-shadow duration-200 ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}`}
+            className={`relative cursor-pointer rounded-lg overflow-hidden border-2 md:border-4 transition-shadow duration-200 ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}`}
             onClick={() => castVote(img.id)}
           >
-            <img src={img.src} alt={img.name} className="w-full h-80 object-cover" />
-            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg font-bold py-2 uppercase tracking-wider">
+            {/* portrait ratio, shrink on phones so 4 rows fit without scrolling */}
+            <img
+              src={img.src}
+              alt={img.name}
+              className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover"
+            />
+            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-sm sm:text-base font-bold py-1 sm:py-2 uppercase tracking-wider">
               {img.name}
             </figcaption>
           </figure>
         ))}
       </div>
 
-      {/* Histogram */}
+      {/* Histogram */} */}
       {results && (
         <div className="mt-12 bg-white rounded-xl p-6 shadow-md" style={{ height: "650px" }}>
           <h2 className="text-2xl font-semibold text-center mb-4">
