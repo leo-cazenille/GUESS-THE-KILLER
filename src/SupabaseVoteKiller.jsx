@@ -94,11 +94,11 @@ function ResultsPage() {
       {/* Right column */}
       <div className="flex-none w-[10vw] min-w-[180px] bg-white p-2 flex flex-col items-center gap-4 overflow-hidden">
         {/* QR section */}
-        <p className="text-4xl font-extrabold text-center leading-snug text-black">Who do you think is the real killer? Vote at:</p>
+        <p className="text-4xl font-extrabold text-center leading-snug text-black">Who is the real killer? Vote at:</p>
         <div className="w-[95%]"><QRCode value="https://leo-cazenille.github.io/GUESS-THE-KILLER/" size={150} style={{ width: "100%", height: "auto" }} /></div>
 
         {/* Top‑3 heading */}
-        <p className="text-4xl font-bold text-center px-1 leading-tight text-black">Top 3 characters with the most votes</p>
+        <p className="text-3xl font-bold text-center px-1 leading-tight text-black">Top 3 most voted:</p>
 
         {/* Top list or message */}
         {display.length === 0 ? (
@@ -107,9 +107,9 @@ function ResultsPage() {
           <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-y-auto">
             {display.map((itm, idx) => (
               <div key={idx} className="w-full flex flex-col items-center gap-1">
-                <div className="relative w-[90%] aspect-[2/3]">
+                <div className="relative w-[60%] aspect-[2/3]">
                   <img src={itm.src} alt={itm.name} className="w-full h-full object-cover rounded-md border" />
-                  <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-3xl font-extrabold py-1 uppercase tracking-wider">{itm.name}</span>
+                  <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-2xl font-extrabold py-1 uppercase tracking-wider">{itm.name}</span>
                 </div>
                 <p className="text-4xl font-extrabold text-black">{itm.pct}%</p>
               </div>
