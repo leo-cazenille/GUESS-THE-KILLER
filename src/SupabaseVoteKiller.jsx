@@ -76,29 +76,29 @@ function ResultsPage() {
       {/* Right column */}
       <div className="flex-none w-[10vw] min-w-[160px] bg-white p-1 flex flex-col items-center gap-2 overflow-hidden">
         {/* QR section */}
-        <p className="text-[11px] font-bold text-center leading-tight">Who do you think is the real killer? Vote at:</p>
+        <p className="text-lg font-bold text-center leading-tight text-black">Who do you think is the real killer? Vote at:</p>
         <div className="w-[90%]"><QRCode value="https://leo-cazenille.github.io/GUESS-THE-KILLER/" size={128} style={{ width:"100%", height:"auto" }} /></div>
 
         {/* Top‑3 heading */}
-        <p className="text-[11px] font-semibold text-center px-1 leading-tight mt-2">Top 3 characters with the most votes</p>
+        <p className="text-lg font-semibold text-center px-1 leading-tight mt-2 text-black">Top 3 characters with the most votes</p>
 
         {/* Top list or no‑votes message */}
         {display.length === 0 ? (
-          <p className="text-[11px] italic mt-4">No votes yet</p>
+          <p className="text-lg italic mt-4 text-black">No votes yet</p>
         ) : (
           <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto mt-1">
             {display.map((itm,idx)=>(
               <div key={idx} className="w-full flex flex-col items-center">
                 <div className="relative w-[85%] aspect-[2/3]">
                   <img src={itm.src} alt={itm.name} className="w-full h-full object-cover rounded-md border" />
-                  <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] font-semibold py-0.5 uppercase tracking-wider">{itm.name}</span>
+                  <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-sm font-semibold py-0.5 uppercase tracking-wider">{itm.name}</span>
                 </div>
-                <p className="text-[10px] font-medium mt-0.5">{itm.pct}%</p>
+                <p className="text-base font-bold mt-1 text-black">{itm.pct}%</p>
               </div>
             ))}
           </div>
         )}
-        <p className="text-[10px] text-center mb-1">{total} total votes</p>
+        <p className="text-base text-center mb-2 text-black">{total} total votes</p>
       </div>
     </div>
   );
