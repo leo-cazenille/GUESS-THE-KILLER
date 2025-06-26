@@ -1,10 +1,8 @@
-// SupabaseVoteDemo.jsx – fixes for 404 images + Postgres error
+// SupabaseVoteDemo.jsx – client‑side aggregation fallback
 // -----------------------------------------------------------------------------
-// 1. **Image paths**: removed the leading slash so that GitHub Pages resolves
-//    them relative to the repo’s base path (e.g. /GUESS-THE-KILLER/).
-// 2. **Histogram query**: use `count(image_id)` + proper `group` so PostgREST
-//    groups rows; previous version missed the group parameter and Postgres
-//    threw `42803`.
+// PostgREST’s aggregate syntax is fiddly and still returning 400s in the
+// user’s project.  For just 12 images, we can download the small votes table
+// (image_id column only) and count client‑side—simpler, 100% reliable.
 // -----------------------------------------------------------------------------
 
 import React, { useEffect, useState } from "react";
@@ -28,12 +26,11 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // ---- 12 local images -------------------------------------------------------
-// Files live in `public/photos/1.jpg` … `12.jpg` (or .png).
 const IMAGES = Array.from({ length: 12 }, (_, i) => {
   const id = i + 1;
   return {
     id,
-    src: `photos/${id}.jpg`, // no leading slash ⇒ relative to GH‑Pages base
+    src: `photos/${id}.jpg`,
     alt: `Photo ${id}`,
   };
 });
@@ -79,15 +76,11 @@ export default function SupabaseVoteDemo() {
     if (error) console.error("Vote error:", error);
   };
 
-  // --- Fetch histogram counts ---------------------------------------------
+  // --- Fetch histogram counts (client‑side aggregation) -------------------
   const fetchResults = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("votes")
-      // PostgREST expects count(expression) for aggregates.
-      // group=image_id groups the rows.
-      .select("image_id, count(*)", { group: "image_id" });
+    const { data, error } = await supabase.from("votes").select("image_id");
 
     if (error) {
       console.error("Fetch results error:", error);
@@ -95,7 +88,18 @@ export default function SupabaseVoteDemo() {
       return;
     }
 
-    setResults(data);
+    // Count occurrences of each image_id
+    const countsMap = new Map();
+    data.forEach(({ image_id }) => {
+      countsMap.set(image_id, (countsMap.get(image_id) || 0) + 1);
+    });
+
+    const counted = Array.from(countsMap.entries()).map(([image_id, count]) => ({
+      image_id,
+      count,
+    }));
+
+    setResults(counted);
     setLoading(false);
   };
 
