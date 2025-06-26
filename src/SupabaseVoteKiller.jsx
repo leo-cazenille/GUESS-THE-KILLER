@@ -1,10 +1,11 @@
-// SupabaseVoteDemo.jsx – local photos version
-// ---------------------------------------------------------------------
-// Replaces remote Picsum placeholders with **your own 12 images**.
-// Drop JPG/PNG files in `public/photos/` (e.g. `public/photos/1.jpg … 12.jpg`).
-// Vite serves everything inside `public/` at the site root, so the <img src>
-// path can be `/photos/<filename>`.
-// ---------------------------------------------------------------------
+// SupabaseVoteDemo.jsx – fixes for 404 images + Postgres error
+// -----------------------------------------------------------------------------
+// 1. **Image paths**: removed the leading slash so that GitHub Pages resolves
+//    them relative to the repo’s base path (e.g. /GUESS-THE-KILLER/).
+// 2. **Histogram query**: use `count(image_id)` + proper `group` so PostgREST
+//    groups rows; previous version missed the group parameter and Postgres
+//    threw `42803`.
+// -----------------------------------------------------------------------------
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -27,19 +28,17 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // ---- 12 local images -------------------------------------------------------
-// Put files 1.jpg … 12.jpg (or .png) under `public/photos/`.
-// Adjust the array if you prefer custom filenames.
+// Files live in `public/photos/1.jpg` … `12.jpg` (or .png).
 const IMAGES = Array.from({ length: 12 }, (_, i) => {
   const id = i + 1;
   return {
     id,
-    src: `/photos/${id}.jpg`, // or .png—match your actual extension
+    src: `photos/${id}.jpg`, // no leading slash ⇒ relative to GH‑Pages base
     alt: `Photo ${id}`,
   };
 });
 
 export default function SupabaseVoteDemo() {
-  // --- Local state ---------------------------------------------------------
   const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSelected] = useState(null);
   const [results, setResults] = useState(null);
@@ -83,9 +82,12 @@ export default function SupabaseVoteDemo() {
   // --- Fetch histogram counts ---------------------------------------------
   const fetchResults = async () => {
     setLoading(true);
+
     const { data, error } = await supabase
       .from("votes")
-      .select("image_id, count", { group: "image_id" });
+      // PostgREST expects count(expression) for aggregates.
+      // group=image_id groups the rows.
+      .select("image_id, count(image_id)", { group: "image_id" });
 
     if (error) {
       console.error("Fetch results error:", error);
