@@ -1,9 +1,11 @@
-// SupabaseVoteDemo.jsx – larger layout, dynamic title, bigger thumbs below labels
+// SupabaseVoteDemo.jsx – big thumbs, minimal gaps, names overlay on photos
 // -----------------------------------------------------------------------------
-// • Title: "Who do you think is the real killer? [User: <name>]".
-// • Image thumbnails in grid are larger (h‑64 ≈ 256 px).
-// • Chart container height bumped to 500 px, full‑width.
-// • Thumbnail plugin draws 32 px icons **below** tick labels (uses scale.bottom).
+// • Overlays each character name directly on the photo (white bold text, dark
+//   translucent strip, Tekken‑style).
+// • Enlarges chart thumbs to 56 px; sets bar & category percentage to 0.98 so
+//   bars (and thus thumbs) sit almost flush with minimal gap.
+// • Tick label font sizes bumped (x: 16, y: 14).
+// • Image cards taller (h‑80 ≈ 320 px) to fill screen better.
 // -----------------------------------------------------------------------------
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -62,15 +64,13 @@ const thumbPlugin = {
   id: "xThumbs",
   afterDraw(chart, _args, opts) {
     const { ctx, scales } = chart;
-    const size = opts.size || 32;
-    const yOffset = opts.offset || 10;
+    const size = opts.size || 56; // larger thumbs
+    const yOffset = opts.offset || 12;
     scales.x.ticks.forEach((_tick, index) => {
       const xPos = scales.x.getPixelForTick(index);
       const img = thumbs[index];
-      if (!img.complete) {
-        img.onload = () => chart.draw();
-      }
-      const yPos = scales.x.bottom + yOffset; // below tick labels
+      if (!img.complete) img.onload = () => chart.draw();
+      const yPos = scales.x.bottom + yOffset;
       ctx.save();
       ctx.beginPath();
       ctx.rect(xPos - size / 2, yPos, size, size);
@@ -99,7 +99,7 @@ export default function SupabaseVoteDemo() {
     }
   }, [user]);
 
-  // --- Pre‑load user’s previous vote ---------------------------------------
+  // --- Pre‑load user vote ---------------------------------------------------
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -108,29 +108,23 @@ export default function SupabaseVoteDemo() {
     })();
   }, [user]);
 
-  // --- Fetch histogram counts ---------------------------------------------
+  // --- Fetch counts ---------------------------------------------------------
   const fetchResults = async () => {
     const { data, error } = await supabase.from("votes").select("image_id");
-    if (error) {
-      console.error("Fetch results error:", error);
-      return;
-    }
-    const countsMap = new Map();
-    data.forEach(({ image_id }) => {
-      countsMap.set(image_id, (countsMap.get(image_id) || 0) + 1);
-    });
-    const counted = Array.from(countsMap.entries()).map(([image_id, count]) => ({ image_id, count }));
-    setResults(counted);
+    if (error) return console.error("Fetch results error:", error);
+    const map = new Map();
+    data.forEach(({ image_id }) => map.set(image_id, (map.get(image_id) || 0) + 1));
+    setResults(Array.from(map.entries()).map(([image_id, count]) => ({ image_id, count })));
   };
 
-  // --- Poll every 3 s -------------------------------------------------------
+  // Poll every 3 s
   useEffect(() => {
     fetchResults();
     const id = setInterval(fetchResults, 3000);
     return () => clearInterval(id);
   }, []);
 
-  // --- Vote handler ---------------------------------------------------------
+  // Vote
   const castVote = async (imageId) => {
     if (!user) return;
     setSelected(imageId);
@@ -139,65 +133,59 @@ export default function SupabaseVoteDemo() {
     fetchResults();
   };
 
-  // --- Chart data & options -------------------------------------------------
+  // Chart data/options -------------------------------------------------------
   const { data, options } = useMemo(() => {
-    const counts = IMAGES.map((img) => {
-      const row = results?.find((r) => r.image_id === img.id);
-      return row ? row.count : 0;
-    });
-
+    const counts = IMAGES.map((img) => results?.find((r) => r.image_id === img.id)?.count || 0);
     return {
       data: {
         labels: IMAGES.map((img) => img.name),
-        datasets: [
-          {
-            label: "Votes",
-            data: counts,
-            backgroundColor: "rgba(54, 162, 235, 0.6)",
-          },
-        ],
+        datasets: [{
+          label: "Votes",
+          data: counts,
+          backgroundColor: "rgba(54, 162, 235, 0.7)",
+          barPercentage: 0.98,
+          categoryPercentage: 0.98,
+        }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { bottom: 60 } }, // extra for larger icons
-        plugins: {
-          legend: { display: false },
-          xThumbs: { size: 32, offset: 10 },
-        },
+        layout: { padding: { bottom: 80 } },
+        plugins: { legend: { display: false }, xThumbs: { size: 56, offset: 12 } },
         scales: {
-          x: {
-            ticks: { maxRotation: 0, autoSkip: false, font: { size: 12 } },
-          },
-          y: { beginAtZero: true, precision: 0 },
+          x: { ticks: { maxRotation: 0, autoSkip: false, font: { size: 16 } } },
+          y: { beginAtZero: true, precision: 0, ticks: { font: { size: 14 } } },
         },
       },
     };
   }, [results]);
 
-  // --- Render --------------------------------------------------------------
+  // Render ------------------------------------------------------------------
   return (
-    <div className="p-4 max-w-screen-xl mx-auto">
+    <div className="p-4 max-w-screen-2xl mx-auto">
       <h1 className="text-4xl font-bold mb-8 text-center">
         Who do you think is the real killer? <span className="text-lg font-normal">[User: {user || "?"}]</span>
       </h1>
 
       {/* Image grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
         {IMAGES.map((img) => (
           <figure
             key={img.id}
-            className={`cursor-pointer rounded-xl overflow-hidden border-4 transition-shadow duration-200 ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}`}
+            className={`relative cursor-pointer rounded-xl overflow-hidden border-4 transition-shadow duration-200 ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}`}
             onClick={() => castVote(img.id)}
           >
-            <img src={img.src} alt={img.name} className="w-full h-64 object-cover" />
+            <img src={img.src} alt={img.name} className="w-full h-80 object-cover" />
+            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg font-bold py-2 uppercase tracking-wider">
+              {img.name}
+            </figcaption>
           </figure>
         ))}
       </div>
 
       {/* Histogram */}
       {results && (
-        <div className="mt-10 bg-white rounded-xl p-6 shadow-md" style={{ height: "500px" }}>
+        <div className="mt-12 bg-white rounded-xl p-6 shadow-md" style={{ height: "550px" }}>
           <Bar data={data} options={options} />
         </div>
       )}
