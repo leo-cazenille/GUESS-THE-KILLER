@@ -87,7 +87,7 @@ export default function SupabaseVoteDemo() {
       .from("votes")
       // PostgREST expects count(expression) for aggregates.
       // group=image_id groups the rows.
-      .select("image_id, count(image_id)", { group: "image_id" });
+      .select("image_id, count(*)", { group: "image_id" });
 
     if (error) {
       console.error("Fetch results error:", error);
