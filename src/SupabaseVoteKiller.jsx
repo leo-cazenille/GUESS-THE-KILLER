@@ -1,17 +1,13 @@
-// SupabaseVoteDemo.jsx – big thumbs, minimal gaps, names overlay on photos
+// SupabaseVoteDemo.jsx – % histogram, larger 90 px thumbs, rotated labels
 // -----------------------------------------------------------------------------
-// • Overlays each character name directly on the photo (white bold text, dark
-//   translucent strip, Tekken‑style).
-// • Enlarges chart thumbs to 56 px; sets bar & category percentage to 0.98 so
-//   bars (and thus thumbs) sit almost flush with minimal gap.
-// • Tick label font sizes bumped (x: 16, y: 14).
-// • Image cards taller (h‑80 ≈ 320 px) to fill screen better.
+// • Histogram now shows **percentages**; total sample size appears in the title
+//   above the chart: "Results of the vote [NN samples]".
+// • Thumbnails under the x‑axis are 90 px; bottom padding expanded.
+// • X‑tick labels rotated 45 deg with bigger font; y‑axis ticks also larger.
 // -----------------------------------------------------------------------------
 
 import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
-
-// ---- Chart.js setup --------------------------------------------------------
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -23,12 +19,13 @@ import {
 import { Bar } from "react-chartjs-2";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
-// ---- Supabase client -------------------------------------------------------
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// ---- Supabase ----------------------------------------------------------------
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
-// ---- Images + character names ---------------------------------------------
+// ---- Data -------------------------------------------------------------------
 const NAMES = [
   "D. Poiré",
   "Jane Blond",
@@ -44,18 +41,15 @@ const NAMES = [
   "Greta",
 ];
 
-const IMAGES = Array.from({ length: 12 }, (_, i) => {
-  const id = i + 1;
-  return {
-    id,
-    name: NAMES[i],
-    src: `photos/${id}.jpg`,
-  };
-});
+const IMAGES = Array.from({ length: 12 }, (_, i) => ({
+  id: i + 1,
+  name: NAMES[i],
+  src: `photos/${i + 1}.jpg`,
+}));
 
-// ---- Thumbnail plugin ------------------------------------------------------
+// ---- Thumb plugin -----------------------------------------------------------
 const thumbs = IMAGES.map((img) => {
-  const image = new window.Image();
+  const image = new Image();
   image.src = img.src;
   return image;
 });
@@ -64,18 +58,18 @@ const thumbPlugin = {
   id: "xThumbs",
   afterDraw(chart, _args, opts) {
     const { ctx, scales } = chart;
-    const size = opts.size || 56; // larger thumbs
-    const yOffset = opts.offset || 12;
-    scales.x.ticks.forEach((_tick, index) => {
-      const xPos = scales.x.getPixelForTick(index);
-      const img = thumbs[index];
+    const size = opts.size || 90;
+    const yOffset = opts.offset || 16;
+    scales.x.ticks.forEach((_, idx) => {
+      const x = scales.x.getPixelForTick(idx);
+      const y = scales.x.bottom + yOffset;
+      const img = thumbs[idx];
       if (!img.complete) img.onload = () => chart.draw();
-      const yPos = scales.x.bottom + yOffset;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(xPos - size / 2, yPos, size, size);
+      ctx.rect(x - size / 2, y, size, size);
       ctx.clip();
-      ctx.drawImage(img, xPos - size / 2, yPos, size, size);
+      ctx.drawImage(img, x - size / 2, y, size, size);
       ctx.restore();
     });
   },
@@ -85,76 +79,108 @@ ChartJS.register(thumbPlugin);
 export default function SupabaseVoteDemo() {
   const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSelected] = useState(null);
-  const [results, setResults] = useState(null);
+  const [results, setResults] = useState(null); // array of {image_id,count}
 
-  // --- Ask for a name -------------------------------------------------------
+  // Prompt for name ----------------------------------------------------------
   useEffect(() => {
     if (!user) {
-      const name = window.prompt("Enter your name to vote:");
-      if (name && name.trim()) {
-        const safe = name.trim();
+      const n = window.prompt("Enter your name to vote:");
+      if (n && n.trim()) {
+        const safe = n.trim();
         setUser(safe);
         localStorage.setItem("voter_name", safe);
       }
     }
   }, [user]);
 
-  // --- Pre‑load user vote ---------------------------------------------------
+  // Load existing vote -------------------------------------------------------
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data } = await supabase.from("votes").select("image_id").eq("user_name", user).single();
+      const { data } = await supabase
+        .from("votes")
+        .select("image_id")
+        .eq("user_name", user)
+        .single();
       if (data) setSelected(data.image_id);
     })();
   }, [user]);
 
-  // --- Fetch counts ---------------------------------------------------------
+  // Fetch vote counts --------------------------------------------------------
   const fetchResults = async () => {
     const { data, error } = await supabase.from("votes").select("image_id");
-    if (error) return console.error("Fetch results error:", error);
+    if (error) return console.error("Fetch error", error);
     const map = new Map();
     data.forEach(({ image_id }) => map.set(image_id, (map.get(image_id) || 0) + 1));
-    setResults(Array.from(map.entries()).map(([image_id, count]) => ({ image_id, count })));
+    setResults([...map.entries()].map(([image_id, count]) => ({ image_id, count })));
   };
 
-  // Poll every 3 s
   useEffect(() => {
     fetchResults();
     const id = setInterval(fetchResults, 3000);
     return () => clearInterval(id);
   }, []);
 
-  // Vote
-  const castVote = async (imageId) => {
+  // Cast vote ----------------------------------------------------------------
+  const castVote = async (id) => {
     if (!user) return;
-    setSelected(imageId);
-    const { error } = await supabase.from("votes").upsert({ user_name: user, image_id: imageId }, { onConflict: "user_name" });
-    if (error) console.error("Vote error:", error);
+    setSelected(id);
+    const { error } = await supabase
+      .from("votes")
+      .upsert({ user_name: user, image_id: id }, { onConflict: "user_name" });
+    if (error) console.error("Vote error", error);
     fetchResults();
   };
 
   // Chart data/options -------------------------------------------------------
-  const { data, options } = useMemo(() => {
+  const { chartData, chartOpts, totalSamples } = useMemo(() => {
     const counts = IMAGES.map((img) => results?.find((r) => r.image_id === img.id)?.count || 0);
+    const total = counts.reduce((a, b) => a + b, 0);
+    const percents = total ? counts.map((c) => ((c / total) * 100).toFixed(2)) : counts;
+
     return {
-      data: {
-        labels: IMAGES.map((img) => img.name),
-        datasets: [{
-          label: "Votes",
-          data: counts,
-          backgroundColor: "rgba(54, 162, 235, 0.7)",
-          barPercentage: 0.98,
-          categoryPercentage: 0.98,
-        }],
+      totalSamples: total,
+      chartData: {
+        labels: IMAGES.map((i) => i.name),
+        datasets: [
+          {
+            label: "% of votes",
+            data: percents,
+            backgroundColor: "rgba(54,162,235,0.75)",
+            barPercentage: 0.98,
+            categoryPercentage: 0.98,
+          },
+        ],
       },
-      options: {
+      chartOpts: {
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { bottom: 80 } },
-        plugins: { legend: { display: false }, xThumbs: { size: 56, offset: 12 } },
+        layout: { padding: { bottom: 120 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.parsed.y}%`,
+            },
+          },
+          xThumbs: { size: 90, offset: 16 },
+        },
         scales: {
-          x: { ticks: { maxRotation: 0, autoSkip: false, font: { size: 16 } } },
-          y: { beginAtZero: true, precision: 0, ticks: { font: { size: 14 } } },
+          x: {
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45,
+              autoSkip: false,
+              font: { size: 18 },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (val) => `${val}%`,
+              font: { size: 16 },
+            },
+          },
         },
       },
     };
@@ -185,8 +211,11 @@ export default function SupabaseVoteDemo() {
 
       {/* Histogram */}
       {results && (
-        <div className="mt-12 bg-white rounded-xl p-6 shadow-md" style={{ height: "550px" }}>
-          <Bar data={data} options={options} />
+        <div className="mt-12 bg-white rounded-xl p-6 shadow-md" style={{ height: "600px" }}>
+          <h2 className="text-2xl font-semibold text-center mb-4">
+            Results of the vote [{totalSamples} samples]
+          </h2>
+          <Bar data={chartData} options={chartOpts} />
         </div>
       )}
     </div>
