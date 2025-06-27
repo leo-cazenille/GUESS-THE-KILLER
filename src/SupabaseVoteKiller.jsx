@@ -112,175 +112,56 @@ function VisualizationPage() {
     </div>);
 }
 
+// ---------- Admin results page --------------------------------------
+function ResultsPage(){
+  const [logged,setLogged]=useState(()=>sessionStorage.getItem("isAdmin")==="true");
+  const [creds,setCreds]=useState({login:"",password:""});
+  const [counts,setCounts]=useState(Array(IMAGES.length).fill(0));
+  const [series,setSeries]=useState([]);
 
-// ---------- Histogram ResultsPage ----------------------------------------
-function HistogramPage() {
-  const [results, setResults] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem("isAdmin") === "true");
-  const [creds, setCreds] = useState({ login: "", password: "" });
+  // polling votes
+  useEffect(()=>{if(!logged) return; const poll=async()=>{const {data}=await supabase.from("votes").select("image_id");const arr=Array(IMAGES.length).fill(0);data.forEach(({image_id})=>arr[image_id-1]++);setCounts(arr);setSeries(s=>[...s.slice(-199),{ts:Date.now(),arr}]);}; poll(); const id=setInterval(poll,3000); return()=>clearInterval(id);},[logged]);
 
-  // Poll votes
-  useEffect(() => {
-    if (!loggedIn) return;
-    const poll = async () => {
-      const { data } = await supabase.from("votes").select("image_id");
-      const counts = Array(IMAGES.length).fill(0);
-      data.forEach(({ image_id }) => (counts[image_id - 1] += 1));
-      setResults(counts);
-      setHistory((prev) => [...prev.slice(-199), { ts: Date.now(), counts }]);
-    };
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => clearInterval(id);
-  }, [loggedIn]);
+  const resetVotes=async()=>{await supabase.from("votes").delete().gt("image_id",0);setCounts(Array(IMAGES.length).fill(0));setSeries([]);};
 
-  const resetVotes = async () => {
-    await supabase.from("votes").delete().gt("image_id", 0);
-    setResults(Array(IMAGES.length).fill(0));
-    setHistory([]);
-  };
+  // csv helpers
+  const csv=(rows)=>rows.map(r=>r.join(",")).join("\n");
+  const dl=(text,name)=>{const blob=new Blob([text],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);};
+  const exportHist=()=>dl(csv([["Character","Votes"],...IMAGES.map((img,i)=>[img.name,counts[i]])]),"histogram.csv");
+  const exportSeries=()=>dl(csv([["timestamp",...IMAGES.map(i=>i.name)],...series.map(s=>[new Date(s.ts).toISOString(),...s.arr])]),"time_series.csv");
 
-  // ---- CSV export helpers ----
-  const exportCSV = (rows, name) => {
-    const csv = rows.map(r=>r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
-  };
-  const exportHistogram = () => {
-    const rows = [["Character","Votes"]].concat(IMAGES.map((img,i)=>[img.name, results[i]]));
-    exportCSV(rows, "histogram.csv");
-  };
-  const exportSeries = () => {
-    const header = ["timestamp",...IMAGES.map(i=>i.name)];
-    const rows = [header].concat(history.map(h=>[new Date(h.ts).toISOString(),...h.counts]));
-    exportCSV(rows, "time_series.csv");
-  };
+  if(!logged){return(<div className="min-h-screen flex items-center justify-center bg-gray-100 p-6"><form onSubmit={e=>{e.preventDefault();if(creds.login==="admin"&&creds.password==="tralala42"){setLogged(true);sessionStorage.setItem("isAdmin","true");}else alert("Invalid");}} className="bg-white p-6 rounded-md shadow-md flex flex-col gap-4 w-80"><h1 className="text-3xl font-bold text-center">Admin</h1><input className="border p-2" placeholder="Login" value={creds.login} onChange={e=>setCreds({...creds,login:e.target.value})}/><input className="border p-2" type="password" placeholder="Password" value={creds.password} onChange={e=>setCreds({...creds,password:e.target.value})}/><button className="bg-blue-600 text-white py-2 rounded-md text-xl">Enter</button></form></div>);}
 
-    setResults(Array(IMAGES.length).fill(0));
-    setHistory([]);
-  };
+  const total=counts.reduce((a,b)=>a+b,0);
+  const perc=total?counts.map(c=>((c/total)*100).toFixed(2)):counts;
 
-  // Chart configs
-  const { chartData, chartOpts, total } = useMemo(() => {
-    const total = results.reduce((a, b) => a + b, 0);
-    const perc = total ? results.map((c) => ((c / total) * 100).toFixed(2)) : results;
-    const wrap = (s) => {
-      const idx = s.indexOf(" ");
-      return idx > 0 ? [s.slice(0, idx), s.slice(idx + 1)] : [s];
-    };
-    return {
-      total,
-      chartData: {
-        labels: IMAGES.map((i) => wrap(i.name)),
-        datasets: [
-          {
-            label: "% of votes",
-            data: perc,
-            backgroundColor: "rgba(54,162,235,0.8)",
-          },
-        ],
-      },
-      chartOpts: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: {
-            beginAtZero: true,
-            max: 100,
-            ticks: { callback: (v) => `${v}%` },
-          },
-        },
-      },
-    };
-  }, [results]);
+  const barData={labels:IMAGES.map(i=>i.name),datasets:[{label:"%",data:perc,backgroundColor:"rgba(54,162,235,0.8)"}]};
+  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>`${v}%`}}}};
 
-  const lineData = useMemo(() => {
-    const labels = history.map((h) => new Date(h.ts).toLocaleTimeString());
-    const datasets = IMAGES.map((img, idx) => ({
-      label: img.name,
-      data: history.map((h) => h.counts[idx]),
-      fill: false,
-      tension: 0.3,
-    }));
-    return { labels, datasets };
-  }, [history]);
+  const lineData={labels:series.map(s=>new Date(s.ts).toLocaleTimeString()),datasets:IMAGES.map((img,idx)=>({label:img.name,data:series.map(s=>s.arr[idx]),fill:false,tension:0.3}))};
 
-  if (!loggedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <form
-          className="bg-white p-6 rounded-md shadow-md flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (creds.login === "admin" && creds.password === "tralala42") {
-              setLoggedIn(true);
-              sessionStorage.setItem("isAdmin", "true");
-            } else {
-              alert("Invalid credentials");
-            }
-          }}
-        >
-          <h1 className="text-3xl font-bold text-center">Admin Login</h1>
-          <input
-            className="border p-2"
-            placeholder="Login"
-            value={creds.login}
-            onChange={(e) => setCreds({ ...creds, login: e.target.value })}
-          />
-          <input
-            type="password"
-            className="border p-2"
-            placeholder="Password"
-            value={creds.password}
-            onChange={(e) => setCreds({ ...creds, password: e.target.value })}
-          />
-          <button className="bg-blue-600 text-white py-2 rounded-md text-xl" type="submit">
-            Enter
-          </button>
-        </form>
-      </div>
-    );
-  }
-
-  return (
+  return(
     <div className="min-h-screen flex flex-col gap-8 p-6">
       <header className="flex flex-wrap justify-between items-center gap-4">
-        <h1 className="text-4xl font-bold">Vote Distribution</h1>
-        <div className="flex gap-3 flex-wrap">
-          <button onClick={exportHistogram} className="bg-green-600 text-white px-4 py-2 rounded-md text-lg">Export histogram CSV</button>
+        <h1 className="text-4xl font-bold">Vote Results</h1>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={exportHist} className="bg-green-600 text-white px-4 py-2 rounded-md text-lg">Export histogram CSV</button>
           <button onClick={exportSeries} className="bg-green-600 text-white px-4 py-2 rounded-md text-lg">Export series CSV</button>
           <button onClick={resetVotes} className="bg-red-600 text-white px-4 py-2 rounded-md text-lg">Reset votes</button>
         </div>
       </header>
+
       <p className="text-2xl">{total} total votes</p>
 
-      <div className="w-full flex justify-center">
-        <div
-          className="w-full md:w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md"
-          style={{ minHeight: \"800px\" }}
-        >
-          <Bar data={chartData} options={chartOpts} height={800} />
-        </div>
-      </div>
+      <div className="w-full flex justify-center"><div className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md" style={{minHeight:800}}><Bar data={barData} options={barOpts} height={800}/></div></div>
 
       <h2 className="text-3xl font-bold">Vote evolution over time</h2>
-      <div
-        className="w-full bg-white p-4 rounded-md shadow-md" style={{ minHeight: \"800px\" }}>
-          <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false }} height={800} />
-        </div>
+      <div className="w-full bg-white p-4 rounded-md shadow-md" style={{minHeight:800}}><Line data={lineData} options={{responsive:true,maintainAspectRatio:false}} height={800}/></div>
 
-        <div className="text-center mt-10">
-          <Link to="/" className="text-blue-600 underline text-2xl">
-            Back to voting
-          </Link>
-        </div>
-      </div>
-    );
+      <div className="text-center mt-10"><Link className="text-blue-600 underline text-2xl" to="/">Back to voting</Link></div>
+    </div>);
 }
+
 
 
 // ---------- Router --------------------------------------------------------
