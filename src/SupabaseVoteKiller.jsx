@@ -141,6 +141,29 @@ function HistogramPage() {
     setHistory([]);
   };
 
+  // ---- CSV export helpers ----
+  const exportCSV = (rows, name) => {
+    const csv = rows.map(r=>r.join(",")).join("
+");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+  };
+  const exportHistogram = () => {
+    const rows = [["Character","Votes"]].concat(IMAGES.map((img,i)=>[img.name, results[i]]));
+    exportCSV(rows, "histogram.csv");
+  };
+  const exportSeries = () => {
+    const header = ["timestamp",...IMAGES.map(i=>i.name)];
+    const rows = [header].concat(history.map(h=>[new Date(h.ts).toISOString(),...h.counts]));
+    exportCSV(rows, "time_series.csv");
+  };
+
+    setResults(Array(IMAGES.length).fill(0));
+    setHistory([]);
+  };
+
   // Chart configs
   const { chartData, chartOpts, total } = useMemo(() => {
     const total = results.reduce((a, b) => a + b, 0);
@@ -228,28 +251,27 @@ function HistogramPage() {
     <div className="min-h-screen flex flex-col gap-8 p-6">
       <header className="flex flex-wrap justify-between items-center gap-4">
         <h1 className="text-4xl font-bold">Vote Distribution</h1>
-        <button
-          onClick={resetVotes}
-          className="bg-red-600 text-white px-4 py-2 rounded-md text-lg"
-        >
-          Reset votes
-        </button>
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={exportHistogram} className="bg-green-600 text-white px-4 py-2 rounded-md text-lg">Export histogram CSV</button>
+          <button onClick={exportSeries} className="bg-green-600 text-white px-4 py-2 rounded-md text-lg">Export series CSV</button>
+          <button onClick={resetVotes} className="bg-red-600 text-white px-4 py-2 rounded-md text-lg">Reset votes</button>
+        </div>
       </header>
       <p className="text-2xl">{total} total votes</p>
 
       <div className="w-full flex justify-center">
         <div
-          className="w-full md:w-3/4 lg:w-2/3 bg-white p-4 rounded-md shadow-md"
-          style={{ minHeight: "500px" }}
+          className="w-full md:w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md"
+          style={{ minHeight: \"800px\" }}
         >
-          <Bar data={chartData} options={chartOpts} height={400} />
+          <Bar data={chartData} options={chartOpts} height={800} />
         </div>
       </div>
 
       <h2 className="text-3xl font-bold">Vote evolution over time</h2>
       <div
-        className="w-full bg-white p-4 rounded-md shadow-md" style={{ minHeight: "500px" }}>
-          <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false }} height={400} />
+        className="w-full bg-white p-4 rounded-md shadow-md" style={{ minHeight: \"800px\" }}>
+          <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false }} height={800} />
         </div>
 
         <div className="text-center mt-10">
