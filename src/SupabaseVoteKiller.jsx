@@ -53,6 +53,14 @@ const ONE_SECOND   = 1_000;
 const WAIT_SECONDS = 60;                      // 🔧 change once to alter the window everywhere
 const WAIT_MS      = WAIT_SECONDS * ONE_SECOND;
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Feature flag — what to display in the Visualization sidebar *before*
+//  the 60-second window elapses:
+//      false  → current behaviour: QR code + Top-3 suspects with portraits
+//      true   → horizontal histogram of vote % for all 12 suspects
+// ─────────────────────────────────────────────────────────────────────────────
+const SHOW_SIDEBAR_HISTOGRAM = true;
+
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -315,6 +323,50 @@ function VisualizationPage() {
     };
   }, [results]);
 
+  // ── Histogram data when the flag is ON ──────────────────────────────────
+  const fullHist = useMemo(() => {
+    // helper: split on first space → ['Researcher', 'Catnip']
+    const wrap = (name) => {
+      const i = name.indexOf(" ");
+      return i === -1 ? name : [name.slice(0, i), name.slice(i + 1)];
+    };
+
+    const counts = IMAGES.map((i) =>
+      results.find((r) => r.image_id === i.id)?.count || 0
+    );
+    const totalVotes = counts.reduce((a, b) => a + b, 0) || 1; // avoid /0
+    const pct = counts.map((c) => ((c / totalVotes) * 100).toFixed(1));
+
+    return {
+      data: {
+        labels: IMAGES.map((i) => wrap(i.name)),
+        datasets: [
+          {
+            label: "%",
+            data: pct,
+            backgroundColor: "rgba(54, 162, 235, 0.8)",
+          },
+        ],
+      },
+      opts: {
+        indexAxis: "y",                          // horizontal bars
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: 100,
+            ticks: { callback: (v) => `${v}%` },
+          },
+          y: {
+              ticks: { font: { size: 16, weight: "bold" } }
+          }
+        },
+      },
+    };
+  }, [results]);
+
   // drag sidebar
   useEffect(() => {
     const move = (e) => dragging.current && setW(Math.max(minW, window.innerWidth - e.clientX));
@@ -380,31 +432,58 @@ function VisualizationPage() {
               />
             </div>
 
-            <p className="text-2xl font-bold text-center text-black">Top 3 most voted:</p>
-
-            {display.length === 0 ? (
-              <p className="text-2xl italic mt-2 text-black">No votes yet</p>
-            ) : (
-              <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-y-auto">
-                {display.map((it) => (
-                  <div key={it.id} className="w-full flex flex-col items-center gap-1">
-                    <div className="relative w-[60%] aspect-[2/3]">
-                      <img
-                        src={it.src}
-                        alt={it.name}
-                        className="w-full h-full object-cover rounded-md border"
-                      />
-                      <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg font-extrabold py-1 uppercase tracking-wider">
-                        {it.name}
-                      </span>
-                    </div>
-                    <p className="text-2xl font-extrabold text-black">{it.pct}%</p>
+            {SHOW_SIDEBAR_HISTOGRAM ? (
+              <div className="w-full flex-1 flex flex-col">
+                {/* extra spacing above the heading ↓ */}
+                <p className="text-2xl font-bold text-center text-black mt-8">
+                  Live vote share
+                </p>
+                <div className="flex-1 overflow-y-auto">
+                  {/* 400 px high canvas fits nicely in sidebar */}
+                  <div style={{ minHeight: 800 }}>
+                    <Bar
+                      data={fullHist.data}
+                      options={fullHist.opts}
+                      height={400}
+                    />
                   </div>
-                ))}
+                </div>
+                <p className="text-xl mt-2 text-center text-black">{total} total votes</p>
               </div>
+            ) : (
+              <>   {/* ▼  ORIGINAL PORTRAIT LAYOUT restored */}
+                <p className="text-2xl font-bold text-center text-black">
+                  Top&nbsp;3 most voted:
+                </p>
+
+                {display.length === 0 ? (
+                  <p className="text-2xl italic mt-2 text-black">No votes yet</p>
+                ) : (
+                  <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-y-auto">
+                    {display.map((it) => (
+                      <div key={it.id} className="w-full flex flex-col items-center gap-1">
+                        <div className="relative w-[60%] aspect-[2/3]">
+                          <img
+                            src={it.src}
+                            alt={it.name}
+                            className="w-full h-full object-cover rounded-md border"
+                          />
+                          <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg font-extrabold py-1 uppercase tracking-wider">
+                            {it.name}
+                          </span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-black">{it.pct}%</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xl text-center text-black mb-2">
+                  {total} total votes
+                </p>
+              </>
             )}
 
-            <p className="text-xl text-center text-black mb-2">{total} total votes</p>
           </>
         ) : (
           <>
