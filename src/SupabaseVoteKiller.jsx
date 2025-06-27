@@ -112,6 +112,7 @@ function VisualizationPage() {
     </div>);
 }
 
+
 // ---------- Histogram ResultsPage with reset + line chart ----------------
 function HistogramPage() {
   const [results, setResults] = useState([]);
@@ -135,7 +136,7 @@ function HistogramPage() {
   }, [loggedIn]);
 
   const handleReset = async () => {
-    await supabase.from("votes").delete().neq("image_id", null);
+    await supabase.from("votes").delete().gt("image_id", 0);
     setResults(Array(IMAGES.length).fill(0));
     setHistory([]);
   };
@@ -153,9 +154,7 @@ function HistogramPage() {
   };
 
   const exportHistogram = () => {
-    const total = results.reduce((a,b)=>a+b,0);
-    const perc = total?results.map(c=>((c/total)*100).toFixed(2)):results;
-    const rows = [["Character","Percent"]].concat(IMAGES.map((img,i)=>[img.name, perc[i]]));
+    const rows = [["Character","Votes"]].concat(IMAGES.map((img,i)=>[img.name, results[i]]));
     exportCSV(rows, "histogram.csv");
   };
 
@@ -213,13 +212,14 @@ function HistogramPage() {
         </div>
       </div>
       <p className="text-2xl mb-2">{total} total votes</p>
-      <div className="flex justify-center"><div className="w-full md:w-1/2 bg-white p-4 rounded-md shadow-md"><Bar data={chartData} options={chartOpts} /></div></div>
+      <div className="flex justify-center"><div className="w-full md:w-3/4 lg:w-2/3 bg-white p-4 rounded-md shadow-md" style={{ minHeight: '500px' }}><Bar data={chartData} options={chartOpts} height={400}/></div></div></div>
       <h2 className="text-3xl font-bold mt-6">Vote evolution over time</h2>
-      <div className="w-full bg-white p-4 rounded-md shadow-md"><Line data={lineData} options={lineOpts} /></div>
+      <div className="w-full bg-white p-4 rounded-md shadow-md" style={{minHeight:'500px'}}><Line data={lineData} options={lineOpts} /></div>
       <div className="text-center mt-4"><Link to="/" className="text-blue-600 underline text-xl">Back to voting</Link></div>
     </div>
   );
 }
+
 
 
 // ---------- Router --------------------------------------------------------
