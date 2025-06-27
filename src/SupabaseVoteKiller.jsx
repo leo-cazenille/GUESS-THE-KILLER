@@ -153,10 +153,10 @@ function ResultsPage(){
 
       <p className="text-2xl">{total} total votes</p>
 
-      <div className="w-full flex justify-center"><div className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md" style={{minHeight:800}}><Bar data={barData} options={barOpts} height={800}/></div></div>
+      <div className="w-full flex justify-center overflow-x-auto"><div className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md" style={{minHeight:800, minWidth:1200}}><Bar data={barData} options={barOpts} height={800} width={1200}/></div></div>
 
       <h2 className="text-3xl font-bold">Vote evolution over time</h2>
-      <div className="w-full bg-white p-4 rounded-md shadow-md" style={{minHeight:800}}><Line data={lineData} options={{responsive:true,maintainAspectRatio:false}} height={800}/></div>
+      <div className="w-full bg-white p-4 rounded-md shadow-md" style={{minHeight:800, minWidth:1200}}><Line data={lineData} options={{responsive:true,maintainAspectRatio:false}} height={800} width={1200}/></div>
 
       <div className="text-center mt-10"><Link className="text-blue-600 underline text-2xl" to="/">Back to voting</Link></div>
     </div>);
