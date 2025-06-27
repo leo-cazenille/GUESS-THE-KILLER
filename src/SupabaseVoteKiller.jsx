@@ -113,113 +113,153 @@ function VisualizationPage() {
 }
 
 
-// ---------- Histogram ResultsPage with reset + line chart ----------------
+// ---------- Histogram ResultsPage ----------------------------------------
 function HistogramPage() {
   const [results, setResults] = useState([]);
   const [history, setHistory] = useState([]);
   const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem("isAdmin") === "true");
-  const [userInput, setUserInput] = useState({ login: "", password: "" });
+  const [creds, setCreds] = useState({ login: "", password: "" });
 
-  const fetchVotes = async () => {
-    const { data } = await supabase.from("votes").select("image_id");
-    const counts = Array(IMAGES.length).fill(0);
-    data.forEach(({ image_id }) => { counts[image_id - 1] += 1; });
-    setResults(counts);
-    setHistory((prev) => [...prev.slice(-199), { ts: Date.now(), counts }]);
-  };
-
+  // Poll votes
   useEffect(() => {
     if (!loggedIn) return;
-    fetchVotes();
-    const id = setInterval(fetchVotes, 3000);
+    const poll = async () => {
+      const { data } = await supabase.from("votes").select("image_id");
+      const counts = Array(IMAGES.length).fill(0);
+      data.forEach(({ image_id }) => (counts[image_id - 1] += 1));
+      setResults(counts);
+      setHistory((prev) => [...prev.slice(-199), { ts: Date.now(), counts }]);
+    };
+    poll();
+    const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [loggedIn]);
 
-  const handleReset = async () => {
+  const resetVotes = async () => {
     await supabase.from("votes").delete().gt("image_id", 0);
     setResults(Array(IMAGES.length).fill(0));
     setHistory([]);
   };
 
-  // Export helpers
-  const exportCSV = (rows, filename) => {
-    const csv = rows.map(r => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportHistogram = () => {
-    const rows = [["Character","Votes"]].concat(IMAGES.map((img,i)=>[img.name, results[i]]));
-    exportCSV(rows, "histogram.csv");
-  };
-
-  const exportTimeSeries = () => {
-    const header = ["timestamp", ...IMAGES.map(i=>i.name)];
-    const rows = [header].concat(history.map(h=>[new Date(h.ts).toISOString(), ...h.counts]));
-    exportCSV(rows, "time_series.csv");
-  };
-
-  // charts
+  // Chart configs
   const { chartData, chartOpts, total } = useMemo(() => {
     const total = results.reduce((a, b) => a + b, 0);
-    const perc = total ? results.map(c => ((c / total) * 100).toFixed(2)) : results;
-    const wrap = s => { const idx = s.indexOf(" "); return idx > 0 ? [s.slice(0, idx), s.slice(idx + 1)] : [s]; };
+    const perc = total ? results.map((c) => ((c / total) * 100).toFixed(2)) : results;
+    const wrap = (s) => {
+      const idx = s.indexOf(" ");
+      return idx > 0 ? [s.slice(0, idx), s.slice(idx + 1)] : [s];
+    };
     return {
       total,
       chartData: {
-        labels: IMAGES.map(i => wrap(i.name)),
-        datasets: [{ label: "% of votes", data: perc, backgroundColor: "rgba(54,162,235,0.8)", barPercentage: 0.9, categoryPercentage: 0.9 }],
+        labels: IMAGES.map((i) => wrap(i.name)),
+        datasets: [
+          {
+            label: "% of votes",
+            data: perc,
+            backgroundColor: "rgba(54,162,235,0.8)",
+          },
+        ],
       },
       chartOpts: {
-        responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}%` } } },
-        scales: { x: { ticks: { autoSkip: false, font: { size: 14 } } }, y: { beginAtZero: true, max: 100, ticks: { callback: v => `${v}%` } } },
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            ticks: { callback: (v) => `${v}%` },
+          },
+        },
       },
-    }; }, [results]);
+    };
+  }, [results]);
 
   const lineData = useMemo(() => {
-    const labels = history.map(h => new Date(h.ts).toLocaleTimeString());
-    const datasets = IMAGES.map((img, idx) => ({ label: img.name, data: history.map(h => h.counts[idx]), fill: false, tension: 0.3 }));
+    const labels = history.map((h) => new Date(h.ts).toLocaleTimeString());
+    const datasets = IMAGES.map((img, idx) => ({
+      label: img.name,
+      data: history.map((h) => h.counts[idx]),
+      fill: false,
+      tension: 0.3,
+    }));
     return { labels, datasets };
   }, [history]);
-  const lineOpts = { responsive: true, maintainAspectRatio: false };
 
   if (!loggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <form className="bg-white p-6 rounded-md shadow-md flex flex-col gap-4" onSubmit={e=>{e.preventDefault(); if(userInput.login==="admin"&&userInput.password==="tralala42"){ setLoggedIn(true); sessionStorage.setItem("isAdmin","true"); } else alert("Invalid credentials"); }}>
+        <form
+          className="bg-white p-6 rounded-md shadow-md flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (creds.login === "admin" && creds.password === "tralala42") {
+              setLoggedIn(true);
+              sessionStorage.setItem("isAdmin", "true");
+            } else {
+              alert("Invalid credentials");
+            }
+          }}
+        >
           <h1 className="text-3xl font-bold text-center">Admin Login</h1>
-          <input placeholder="Login" className="border p-2" value={userInput.login} onChange={e=>setUserInput({...userInput,login:e.target.value})}/>
-          <input placeholder="Password" type="password" className="border p-2" value={userInput.password} onChange={e=>setUserInput({...userInput,password:e.target.value})}/>
-          <button className="bg-blue-600 text-white py-2 rounded-md text-xl" type="submit">Enter</button>
+          <input
+            className="border p-2"
+            placeholder="Login"
+            value={creds.login}
+            onChange={(e) => setCreds({ ...creds, login: e.target.value })}
+          />
+          <input
+            type="password"
+            className="border p-2"
+            placeholder="Password"
+            value={creds.password}
+            onChange={(e) => setCreds({ ...creds, password: e.target.value })}
+          />
+          <button className="bg-blue-600 text-white py-2 rounded-md text-xl" type="submit">
+            Enter
+          </button>
         </form>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col p-4 gap-6">
-      <div className="flex flex-wrap justify-between items-center gap-4">
+    <div className="min-h-screen flex flex-col gap-8 p-6">
+      <header className="flex flex-wrap justify-between items-center gap-4">
         <h1 className="text-4xl font-bold">Vote Distribution</h1>
-        <div className="flex gap-3">
-          <button onClick={exportHistogram} className="px-3 py-2 bg-green-600 text-white rounded-md text-lg">Export histogram CSV</button>
-          <button onClick={exportTimeSeries} className="px-3 py-2 bg-green-600 text-white rounded-md text-lg">Export series CSV</button>
-          <button onClick={handleReset} className="px-3 py-2 bg-red-600 text-white rounded-md text-lg">Reset votes</button>
+        <button
+          onClick={resetVotes}
+          className="bg-red-600 text-white px-4 py-2 rounded-md text-lg"
+        >
+          Reset votes
+        </button>
+      </header>
+      <p className="text-2xl">{total} total votes</p>
+
+      <div className="w-full flex justify-center">
+        <div
+          className="w-full md:w-3/4 lg:w-2/3 bg-white p-4 rounded-md shadow-md"
+          style={{ minHeight: "500px" }}
+        >
+          <Bar data={chartData} options={chartOpts} height={400} />
         </div>
       </div>
-      <p className="text-2xl mb-2">{total} total votes</p>
-      <div className="flex justify-center"><div className="w-full md:w-3/4 lg:w-2/3 bg-white p-4 rounded-md shadow-md" style={{ minHeight: '500px' }}><Bar data={chartData} options={chartOpts} height={400}/></div></div></div>
-      <h2 className="text-3xl font-bold mt-6">Vote evolution over time</h2>
-      <div className="w-full bg-white p-4 rounded-md shadow-md" style={{minHeight:'500px'}}><Line data={lineData} options={lineOpts} /></div>
-      <div className="text-center mt-4"><Link to="/" className="text-blue-600 underline text-xl">Back to voting</Link></div>
-    </div>
-  );
-}
 
+      <h2 className="text-3xl font-bold">Vote evolution over time</h2>
+      <div
+        className="w-full bg-white p-4 rounded-md shadow-md" style={{ minHeight: "500px" }}>
+          <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false }} height={400} />
+        </div>
+
+        <div className="text-center mt-10">
+          <Link to="/" className="text-blue-600 underline text-2xl">
+            Back to voting
+          </Link>
+        </div>
+      </div>
+    );
+}
 
 
 // ---------- Router --------------------------------------------------------
