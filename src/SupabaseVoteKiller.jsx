@@ -87,7 +87,7 @@ async function resetVotesAndNotify() {
   localStorage.setItem("votes_reset", Date.now().toString());
 }
 
-const REAL_KILLER_ID   = 4;
+const REAL_KILLER_ID   = 5;
 const REAL_KILLER_NAME = NAMES[REAL_KILLER_ID - 1];
 
 // --------------------------------- VOTE GRID -----------------------------------------------------
