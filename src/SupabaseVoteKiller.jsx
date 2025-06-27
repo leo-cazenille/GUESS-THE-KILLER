@@ -138,7 +138,29 @@ function ResultsPage(){
   const barData={labels:IMAGES.map(i=>i.name),datasets:[{label:"%",data:perc,backgroundColor:"rgba(54,162,235,0.8)"}]};
   const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>`${v}%`}}}};
 
-  const lineData={labels:series.map(s=>new Date(s.ts).toLocaleTimeString()),datasets:IMAGES.map((img,idx)=>({label:img.name,data:series.map(s=>s.arr[idx]),fill:false,tension:0.3}))};
+  // Put a palette somewhere near your other constants
+  const COLORS = [
+      "#ef4444", "#3b82f6", "#10b981", "#f59e0b",
+      "#6366f1", "#ec4899", "#14b8a6", "#d946ef",
+      "#84cc16", "#dc2626", "#0ea5e9", "#a855f7"
+  ];
+
+  //const lineData={labels:series.map(s=>new Date(s.ts).toLocaleTimeString()),datasets:IMAGES.map((img,idx)=>({label:img.name,data:series.map(s=>s.arr[idx]),fill:false,tension:0.3}))};
+    // Re-build the datasets with per-character colours
+    const lineData = {
+      labels: series.map(s => new Date(s.ts).toLocaleTimeString()),
+      datasets: IMAGES.map((img, idx) => ({
+        label: img.name,
+        data:  series.map(s => s.arr[idx]),
+        fill:  false,
+        tension: 0.3,
+        borderColor: COLORS[idx % COLORS.length],
+        backgroundColor: COLORS[idx % COLORS.length] + "33",   // 20 % alpha for points
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      }))
+    };
 
   return(
     <div className="min-h-screen flex flex-col gap-8 p-6">
