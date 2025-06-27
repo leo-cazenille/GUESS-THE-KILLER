@@ -139,33 +139,34 @@ function VoteGrid() {
     );
   };
 
-  // ---------------------------------------------------- listen for session start (Supabase)
+  // ───────────────────────────────────────────────────────────────────────────────
+  //  Poll video_session once a second until started_at appears
+  // ───────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // fetch once
-    (async () => {
-      const { data } = await supabase
+    let stop = false;
+    if (videoStart) return;          // already have it → nothing to do
+
+    const tick = async () => {
+      const { data, error } = await supabase
         .from("video_session")
         .select("started_at")
         .eq("id", 1)
         .single();
-      if (data?.started_at) setVS(Date.parse(data.started_at));
-    })();
+      if (error) {
+        console.error("video_session poll failed:", error);
+        return;
+      }
+      if (data?.started_at) {
+        setVS(Date.parse(data.started_at));
+        stop = true;
+      }
+    };
 
-    // realtime subscription
-    const chan = supabase
-      .channel("session")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "video_session", filter: "id=eq.1" },
-        (payload) => {
-          const ts = payload.new?.started_at;
-          if (ts) setVS(Date.parse(ts));
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(chan);
-  }, []);
+    tick();                                   // first immediate fetch
+    const int = setInterval(() => { if (!stop) tick(); }, ONE_SECOND);
+    return () => clearInterval(int);
+  }, [videoStart]);
+  // ───────────────────────
 
   // ---------------------------------------------------- accumulate killer time & push score
   useEffect(() => {
