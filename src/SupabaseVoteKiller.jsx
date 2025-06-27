@@ -89,7 +89,7 @@ async function resetAllAndNotify() {
   await Promise.all([
     supabase.from("votes").delete().gt("image_id", 0),
     supabase.from("scores").delete().gt("score", -1),
-    supabase.from("video_session").update({ started_at: null }).eq("id", 1),
+    supabase.from("video_session").upsert({ id: 1, started_at: null }),
   ]);
   localStorage.setItem("votes_reset", Date.now().toString()); // keeps existing listeners
 }
