@@ -5,16 +5,32 @@ import { createClient } from "@supabase/supabase-js";
 import { HashRouter as Router, Routes, Route, Navigate, Link } from "react-router-dom";
 import ReactPlayer from "react-player/youtube";
 import { QRCodeCanvas as QRCode } from "qrcode.react";
+
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  PointElement,
+  LineElement,
+  LineController,
+  TimeScale,
   Tooltip,
   Legend,
 } from "chart.js";
-import { Bar } from "react-chartjs-2";
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+import { Bar, Line } from "react-chartjs-2";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  LineController,
+  TimeScale,
+  Tooltip,
+  Legend
+);
 
 // ---------- Supabase & static data ----------------------------------------
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
