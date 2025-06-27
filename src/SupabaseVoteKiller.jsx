@@ -507,6 +507,32 @@ function ResultsPage() {
     };
   }, [logged, videoStart]);
 
+  // Reset when the video is started
+  useEffect(() => {
+    let lastStart = 0;
+
+    const poll = async () => {
+      const { data } = await supabase
+        .from("video_session")
+        .select("started_at")
+        .eq("id", 1)
+        .maybeSingle();
+
+      if (data?.started_at) {
+        const ts = Date.parse(data.started_at);
+        if (ts !== lastStart) {
+          lastStart = ts;          // remember
+          setVS(ts);               // (keeps existing logic)
+          setSer([]);              // ← clears the line-plot
+        }
+      }
+    };
+
+    poll();                                   // first immediate fetch
+    const id = setInterval(poll, 1_000);      // then every second
+    return () => clearInterval(id);
+  }, []);
+
   // admin reset
   const resetVotes = async () => {
     await resetAllAndNotify();
