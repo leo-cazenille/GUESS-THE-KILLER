@@ -96,6 +96,7 @@ function VisualizationPage() {
     </div>);
 }
 
+
 // ---------- Histogram ResultsPage with reset + line chart ----------------
 function HistogramPage() {
   const [results, setResults] = useState([]);
@@ -204,6 +205,7 @@ function HistogramPage() {
     </div>
   );
 }
+
 
 
 // ---------- Router --------------------------------------------------------
