@@ -198,13 +198,16 @@ function VoteGrid() {
 
   // vote handler -------------------------------------------------------------
   const vote = async (id) => {
-    if (!user) return;
+    if (!user || votingClosed) return;
     setSel(id);
     await supabase.from("votes").upsert(
       { user_name: user, image_id: id },
       { onConflict: "user_name" }
     );
   };
+
+  // Is the 60-second window already over?
+  const votingClosed = videoStart && Date.now() - videoStart >= WAIT_MS;
 
   // ----------------------------- UI -----------------------------------------
   return (
@@ -221,9 +224,10 @@ function VoteGrid() {
           <figure
             key={img.id}
             onClick={() => vote(img.id)}
-            className={`relative rounded-lg overflow-hidden cursor-pointer border-2 md:border-4 transition-shadow ${
-              selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"
-            }`}
+            className={`relative rounded-lg overflow-hidden cursor-pointer border-2 md:border-4 transition-shadow
+            ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}
+            ${votingClosed ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}
+            `}
           >
             <img
               src={img.src}
@@ -488,7 +492,7 @@ function VisualizationPage() {
         ) : (
           <>
             <p className="text-2xl font-extrabold text-center text-black">
-              Leaderboard – who trusted the killer the longest?
+              Leaderboard – who guessed the killer the longest?
             </p>
             {leader.length === 0 ? (
               <p className="text-xl italic text-black">No scores yet</p>
