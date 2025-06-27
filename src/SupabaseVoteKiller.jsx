@@ -171,7 +171,7 @@ export default function MainApp() {
       <Routes>
         <Route path="/" element={<VoteGrid />} />
         <Route path="/visualization" element={<VisualizationPage />} />
-        <Route path="/results" element={<HistogramPage />} />
+        <Route path="/results" element={<ResultsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
