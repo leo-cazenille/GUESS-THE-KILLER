@@ -1,15 +1,17 @@
 // SupabaseVoteKiller.jsx
-// -----------------------------------------------------------------------------------------------
-// A React-Vite demo that lets users vote for one of twelve suspects, shows live tallies,
-// and offers an admin dashboard with deeper analytics.
+// -------------------------------------------------------------------------------------------------
+// React-Vite demo - lets users vote for one of twelve suspects, shows live tallies, and
+// provides an admin dashboard.  This version implements:
 //
-// NEW IN THIS VERSION
-//   • Video start → full reset of votes + charts, start timestamp is stored.
-//   • After 1 200 s from video start the results chart stops updating.
-//   • After the same 1 200 s each voter sees what % of that time they had picked suspect #4.
+//  • Font-size tweaks in VoteGrid (title 6xl → 3xl, captions xl → lg).
+//  • Per-movie timer now 60 s (change WAIT_SECONDS below to adjust everywhere).
+//  • VoteGrid final message now: “You correctly selected the real killer (The Director) for XX % of
+//    the duration of the movie.”  Calculation is clamped to 0-100 and spacing fixed.
+//  • ResultsPage keeps *all* series points (no sliding window).
+//  • All previous 1 200-s waits replaced with WAIT_SECONDS.
 //
-// -----------------------------------------------------------------------------------------------
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+// -------------------------------------------------------------------------------------------------
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
   HashRouter as Router,
@@ -17,7 +19,6 @@ import {
   Route,
   Navigate,
   Link,
-  useNavigate,
 } from "react-router-dom";
 import ReactPlayer from "react-player/youtube";
 import { QRCodeCanvas as QRCode } from "qrcode.react";
@@ -48,17 +49,22 @@ ChartJS.register(
   Legend
 );
 
-// ---------- Supabase & static data -------------------------------------------------------------
+// --------------------------------- CONFIG --------------------------------------------------------
+const ONE_SECOND   = 1_000;
+const WAIT_SECONDS = 60;                       // 🔧 <-- change once, auto-propagates
+const WAIT_MS      = WAIT_SECONDS * ONE_SECOND;
+
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+// suspects
 const NAMES = [
   "D. Poiré",
   "Jane Blond",
   "D. Doubledork",
-  "The Director",
+  "The Director",        // id 4 – the “real killer”
   "Dr. Lafayette",
   "Spiderman",
   "Mew the ripper",
@@ -75,32 +81,27 @@ const IMAGES = NAMES.map((name, i) => ({
   src: asset(`photos/${i + 1}.jpg`),
 }));
 
-// Utilities -------------------------------------------------------------------------------------
-const ONE_SECOND = 1000;
-const TWENTY_MIN = 1200 * ONE_SECOND;
-
-// Helper: full-table reset + cross-tab notification
+// --------------------------------- HELPERS -------------------------------------------------------
 async function resetVotesAndNotify() {
   await supabase.from("votes").delete().gt("image_id", 0);
-  localStorage.setItem("votes_reset", Date.now().toString()); // storage event
+  localStorage.setItem("votes_reset", Date.now().toString());
 }
 
-// ---------- VoteGrid ---------------------------------------------------------------------------
+const REAL_KILLER_ID   = 4;
+const REAL_KILLER_NAME = NAMES[REAL_KILLER_ID - 1];
+
+// --------------------------------- VOTE GRID -----------------------------------------------------
 function VoteGrid() {
-  const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
-  const [selected, setSelected] = useState(null);
+  const [user, setUser]     = useState(() => localStorage.getItem("voter_name") || "");
+  const [selected, setSel]  = useState(null);
 
-  // ---- NEW – percentage of time on suspect #4 (id === 4) -------------------------------------
-  const [pctFourth, setPctFourth] = useState(null);
-  const durationRef = useRef(0);          // ms accumulated while id 4 is selected
-  const lastTickRef = useRef(Date.now()); // ms – last interval tick
+  // timing for “percentage of movie on killer”
+  const [videoStart, setVS] = useState(() => Number(localStorage.getItem("video_start") || 0));
+  const durRef              = useRef(0);          // ms on killer
+  const lastTick            = useRef(Date.now());
+  const [pctKiller, setPct] = useState(null);
 
-  // fetch video start for later comparisons
-  const [videoStart, setVideoStart] = useState(
-    () => Number(localStorage.getItem("video_start") || 0)
-  );
-
-  // prompt for name once
+  // prompt for name
   useEffect(() => {
     if (!user) {
       const n = window.prompt("Enter your name to vote:")?.trim();
@@ -120,68 +121,62 @@ function VoteGrid() {
         .select("image_id")
         .eq("user_name", user)
         .single();
-      if (data) setSelected(data.image_id);
+      if (data) setSel(data.image_id);
     })();
   }, [user]);
 
-  // handle a vote click
+  // handle vote
   const vote = async (id) => {
     if (!user) return;
-    setSelected(id);
+    setSel(id);
     await supabase.from("votes").upsert(
       { user_name: user, image_id: id },
       { onConflict: "user_name" }
     );
   };
 
-  // -------- track “time on suspect #4” until 1 200 s mark --------------------------------------
+  // listen for new video start in other tab
   useEffect(() => {
-    // Abort if video hasn't started
-    if (!videoStart) {
-      const handler = (e) =>
-        e.key === "video_start" && setVideoStart(Number(e.newValue));
-      window.addEventListener("storage", handler);
-      return () => window.removeEventListener("storage", handler);
-    }
+    const h = (e) => e.key === "video_start" && setVS(Number(e.newValue));
+    window.addEventListener("storage", h);
+    return () => window.removeEventListener("storage", h);
+  }, []);
 
-    // If 20 min already elapsed, just compute once and bail
-    if (Date.now() - videoStart >= TWENTY_MIN) {
-      if (selected === 4) {
-        // assume the user held #4 through the end
-        durationRef.current += Date.now() - lastTickRef.current;
+  // accumulate time on killer for WAIT_MS after start
+  useEffect(() => {
+    if (!videoStart) return;
+
+    // if already finished, compute once
+    if (Date.now() - videoStart >= WAIT_MS) {
+      if (selected === REAL_KILLER_ID) {
+        durRef.current += Date.now() - lastTick.current;
       }
-      setPctFourth(((durationRef.current / TWENTY_MIN) * 100).toFixed(1));
+      const pct = Math.min(100, (durRef.current / WAIT_MS) * 100);
+      setPct(pct.toFixed(1));
       return;
     }
 
-    // Otherwise accumulate every second until the 20-min mark
-    const interval = setInterval(() => {
+    const int = setInterval(() => {
       const now = Date.now();
 
-      if (selected === 4) {
-        durationRef.current += now - lastTickRef.current; // add delta
+      if (selected === REAL_KILLER_ID) {
+        durRef.current += now - lastTick.current;
       }
+      lastTick.current = now;
 
-      lastTickRef.current = now;
-
-      if (now - videoStart >= TWENTY_MIN) {
-        // final calculation
-        if (selected === 4) {
-          durationRef.current += now - lastTickRef.current;
-        }
-        setPctFourth(
-          ((durationRef.current / TWENTY_MIN) * 100).toFixed(1)
-        );
-        clearInterval(interval);
+      if (now - videoStart >= WAIT_MS) {
+        const pct = Math.min(100, (durRef.current / WAIT_MS) * 100);
+        setPct(pct.toFixed(1));
+        clearInterval(int);
       }
     }, ONE_SECOND);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(int);
   }, [selected, videoStart]);
 
   return (
     <div className="p-4 max-w-screen-2xl mx-auto">
-      <h1 className="text-6xl font-bold mb-8 text-center">
+      <h1 className="text-3xl font-bold mb-8 text-center">
         Who do you think is the real killer?
       </h1>
 
@@ -202,80 +197,63 @@ function VoteGrid() {
               alt={img.name}
               className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover"
             />
-            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-xl sm:text-2xl font-bold py-1 uppercase tracking-wider">
+            <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg sm:text-xl font-bold py-1 uppercase tracking-wider">
               {img.name}
             </figcaption>
           </figure>
         ))}
       </div>
 
-      {/* NEW – show percentage */}
-      {pctFourth !== null && (
-        <p className="mt-6 text-3xl font-bold text-center text-green-700">
-          You selected <strong>{NAMES[3]}</strong> for 
-          {pctFourth}
-          % of the first 20 minutes!
+      {pctKiller !== null && (
+        <p className="mt-6 text-2xl sm:text-3xl font-bold text-center text-green-700">
+          You correctly selected the real killer ({REAL_KILLER_NAME}) for{" "}
+          {pctKiller}% of the duration of the movie.
         </p>
       )}
     </div>
   );
 }
 
-// ---------- VisualizationPage ------------------------------------------------------------------
+// --------------------------------- VISUALIZATION PAGE -------------------------------------------
 function VisualizationPage() {
   const [results, setResults] = useState([]);
-  const [sidebarW, setSidebarW] = useState(
-    Math.max(260, window.innerWidth * 0.1)
-  );
-  const dragging = useRef(false);
+  const [sidebarW, setW]      = useState(Math.max(260, window.innerWidth * 0.1));
+  const dragging              = useRef(false);
+  const VIDEO_ID              = "a3XDry3EwiU";
   const minW = 260;
-  const VIDEO_ID = "a3XDry3EwiU";
 
-  // poll vote counts – live top-3
+  // polling counts
   useEffect(() => {
     const poll = async () => {
       const { data } = await supabase.from("votes").select("image_id");
-      const map = new Map();
-      data.forEach(({ image_id }) =>
-        map.set(image_id, (map.get(image_id) || 0) + 1)
-      );
-      setResults(
-        [...map].map(([image_id, count]) => ({ image_id, count }))
-      );
+      const m = new Map();
+      data.forEach(({ image_id }) => m.set(image_id, (m.get(image_id) || 0) + 1));
+      setResults([...m].map(([image_id, count]) => ({ image_id, count })));
     };
     poll();
-    const id = setInterval(poll, 3000);
+    const id = setInterval(poll, 3_000);
     return () => clearInterval(id);
   }, []);
 
-  // derive top-3
   const { display, total } = useMemo(() => {
-    const arr = IMAGES.map((i) => ({
+    const arr   = IMAGES.map((i) => ({
       ...i,
       count: results.find((r) => r.image_id === i.id)?.count || 0,
     }));
     const total = arr.reduce((a, b) => a + b.count, 0);
-    if (total === 0) return { total, display: [] };
-    const nonZero = arr.filter((e) => e.count > 0).sort((a, b) => b.count - a.count);
-    const top = nonZero.length > 3 ? nonZero.slice(0, 3) : nonZero;
+    if (!total) return { total, display: [] };
+    const non0  = arr.filter((e) => e.count > 0).sort((a, b) => b.count - a.count);
+    const top   = non0.length > 3 ? non0.slice(0, 3) : non0;
     return {
       total,
-      display: top.map((o) => ({
-        ...o,
-        pct: ((o.count / total) * 100).toFixed(1),
-      })),
+      display: top.map((o) => ({ ...o, pct: ((o.count / total) * 100).toFixed(1) })),
     };
   }, [results]);
 
-  // drag sidebar handle
+  // drag sidebar
   useEffect(() => {
-    const move = (e) => {
-      if (!dragging.current) return;
-      setSidebarW(Math.max(minW, window.innerWidth - e.clientX));
-    };
-    const up = () => {
-      dragging.current = false;
-    };
+    const move = (e) => dragging.current && setW(Math.max(minW, window.innerWidth - e.clientX));
+    const up   = () => (dragging.current = false);
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     return () => {
@@ -284,25 +262,18 @@ function VisualizationPage() {
     };
   }, []);
 
-  // ---------- NEW: video-start side-effects -----------------------------------------------------
-  // We need these refs so we only reset once.
-  const hasReset = useRef(false);
-
-  const handleVideoStart = async () => {
-    // First time only
-    if (hasReset.current) return;
-    hasReset.current = true;
-
-    // 1) reset table + broadcast
+  // on video start
+  const didReset = useRef(false);
+  const onStart  = async () => {
+    if (didReset.current) return;
+    didReset.current = true;
     await resetVotesAndNotify();
-
-    // 2) record new video_start (cross-tab)
     localStorage.setItem("video_start", Date.now().toString());
   };
 
   return (
     <div className="h-screen w-screen flex overflow-hidden select-none">
-      {/* video pane */}
+      {/* video */}
       <div className="flex-grow h-full flex items-center justify-center bg-black">
         <div className="w-full aspect-video max-h-full">
           <ReactPlayer
@@ -310,7 +281,7 @@ function VisualizationPage() {
             width="100%"
             height="100%"
             controls
-            onStart={handleVideoStart} // NEW
+            onStart={onStart}
             config={{ youtube: { playerVars: { cc_load_policy: 1 } } }}
             className="rounded-xl overflow-hidden"
           />
@@ -320,19 +291,15 @@ function VisualizationPage() {
       {/* drag handle */}
       <div
         className="w-2 cursor-ew-resize bg-gray-300 hover:bg-gray-400"
-        onPointerDown={() => {
-          dragging.current = true;
-        }}
+        onPointerDown={() => (dragging.current = true)}
       />
 
-      {/* live sidebar */}
+      {/* sidebar */}
       <div
         className="bg-white p-2 flex flex-col items-center gap-4 overflow-hidden"
         style={{ width: sidebarW }}
       >
-        <p className="text-2xl font-extrabold text-center text-black">
-          Who is the real killer? Vote at:
-        </p>
+        <p className="text-2xl font-extrabold text-center">Who is the real killer? Vote at:</p>
         <div className="w-[95%]">
           <QRCode
             value="https://leo-cazenille.github.io/GUESS-THE-KILLER/"
@@ -340,146 +307,107 @@ function VisualizationPage() {
             style={{ width: "100%", height: "auto" }}
           />
         </div>
-        <p className="text-2xl font-bold text-center text-black">
-          Top 3 most voted:
-        </p>
+        <p className="text-2xl font-bold text-center">Top 3 most voted:</p>
         {display.length === 0 ? (
-          <p className="text-2xl italic text-black mt-2">No votes yet</p>
+          <p className="text-2xl italic mt-2">No votes yet</p>
         ) : (
           <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-y-auto">
-            {display.map((itm, idx) => (
-              <div
-                key={idx}
-                className="w-full flex flex-col items-center gap-1"
-              >
+            {display.map((it) => (
+              <div key={it.id} className="w-full flex flex-col items-center gap-1">
                 <div className="relative w-[60%] aspect-[2/3]">
                   <img
-                    src={itm.src}
-                    alt={itm.name}
+                    src={it.src}
+                    alt={it.name}
                     className="w-full h-full object-cover rounded-md border"
                   />
-                  <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-xl font-extrabold py-1 uppercase tracking-wider">
-                    {itm.name}
+                  <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg font-extrabold py-1 uppercase tracking-wider">
+                    {it.name}
                   </span>
                 </div>
-                <p className="text-2xl font-extrabold text-black">
-                  {itm.pct}%
-                </p>
+                <p className="text-2xl font-extrabold">{it.pct}%</p>
               </div>
             ))}
           </div>
         )}
-        <p className="text-xl text-center text-black mb-2">{total} total votes</p>
+        <p className="text-xl text-center mb-2">{total} total votes</p>
       </div>
     </div>
   );
 }
 
-// ---------- Admin ResultsPage ------------------------------------------------------------------
+// --------------------------------- RESULTS (ADMIN) ----------------------------------------------
 function ResultsPage() {
-  const [logged, setLogged] = useState(
-    () => sessionStorage.getItem("isAdmin") === "true"
-  );
-  const [creds, setCreds] = useState({ login: "", password: "" });
-  const [counts, setCounts] = useState(Array(IMAGES.length).fill(0));
-  const [series, setSeries] = useState([]);
+  const [logged, setLogged] = useState(() => sessionStorage.getItem("isAdmin") === "true");
+  const [creds, setCreds]   = useState({ login: "", password: "" });
+  const [counts, setCnt]    = useState(Array(IMAGES.length).fill(0));
+  const [series, setSer]    = useState([]);
+  const [videoStart, setVS] = useState(() => Number(localStorage.getItem("video_start") || 0));
 
-  // ---------- listen for "votes_reset" to clear line plot -------------------------------------
+  // listen for resets & video_start
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "votes_reset") {
-        setSeries([]);
-      }
+    const h = (e) => {
+      if (e.key === "votes_reset") setSer([]);
+      if (e.key === "video_start") setVS(Number(e.newValue));
     };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    window.addEventListener("storage", h);
+    return () => window.removeEventListener("storage", h);
   }, []);
 
-  // ---------- manage polling window -----------------------------------------------------------
-  const [videoStart, setVideoStart] = useState(
-    () => Number(localStorage.getItem("video_start") || 0)
-  );
-  useEffect(() => {
-    const handler = (e) =>
-      e.key === "video_start" && setVideoStart(Number(e.newValue));
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, []);
-
-  // polling votes
+  // poll votes (all points kept)
   useEffect(() => {
     if (!logged) return;
 
     const poll = async () => {
       const { data } = await supabase.from("votes").select("image_id");
 
-      // counts
       const arr = Array(IMAGES.length).fill(0);
       data.forEach(({ image_id }) => arr[image_id - 1]++);
-      setCounts(arr);
-
-      // time-series
-      setSeries((s) =>
-        [...s.slice(-199), { ts: Date.now(), arr }]
-      );
+      setCnt(arr);
+      setSer((s) => [...s, { ts: Date.now(), arr }]);
     };
 
-    // --- decide whether to poll
-    const shouldPoll =
-      !videoStart || Date.now() - videoStart < TWENTY_MIN;
+    const shouldPoll = !videoStart || Date.now() - videoStart < WAIT_MS;
+    if (!shouldPoll) return;
 
-    if (!shouldPoll) return; // beyond 20 min window
+    poll();
+    const id = setInterval(poll, 3_000);
 
-    poll(); // immediate first fetch
-    const id = setInterval(poll, 3000);
-
-    // Optional: stop exactly at deadline
-    let killerTimeout;
+    let killer;
     if (videoStart) {
-      const remaining = videoStart + TWENTY_MIN - Date.now();
-      killerTimeout = setTimeout(() => clearInterval(id), remaining);
+      const rem = videoStart + WAIT_MS - Date.now();
+      killer = setTimeout(() => clearInterval(id), rem);
     }
-
     return () => {
       clearInterval(id);
-      killerTimeout && clearTimeout(killerTimeout);
+      killer && clearTimeout(killer);
     };
   }, [logged, videoStart]);
 
-  // reset votes from admin panel
+  // admin reset
   const resetVotes = async () => {
     await resetVotesAndNotify();
-    setCounts(Array(IMAGES.length).fill(0));
-    setSeries([]);
+    setCnt(Array(IMAGES.length).fill(0));
+    setSer([]);
   };
 
-  // csv helpers
-  const csv = (rows) => rows.map((r) => r.join(",")).join("\n");
-  const dl = (text, name) => {
-    const blob = new Blob([text], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
+  // CSV
+  const csv  = (rows) => rows.map((r) => r.join(",")).join("\n");
+  const save = (text, name) => {
+    const b = new Blob([text], { type: "text/csv" });
+    const u = URL.createObjectURL(b);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u);
   };
   const exportHist = () =>
-    dl(
-      csv([
-        ["Character", "Votes"],
-        ...IMAGES.map((img, i) => [img.name, counts[i]]),
-      ]),
+    save(
+      csv([["Character", "Votes"], ...IMAGES.map((img, i) => [img.name, counts[i]])]),
       "histogram.csv"
     );
   const exportSeries = () =>
-    dl(
+    save(
       csv([
         ["timestamp", ...IMAGES.map((i) => i.name)],
-        ...series.map((s) => [
-          new Date(s.ts).toISOString(),
-          ...s.arr,
-        ]),
+        ...series.map((s) => [new Date(s.ts).toISOString(), ...s.arr]),
       ]),
       "time_series.csv"
     );
@@ -490,10 +418,7 @@ function ResultsPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (
-              creds.login === "admin" &&
-              creds.password === "tralala42"
-            ) {
+            if (creds.login === "admin" && creds.password === "tralala42") {
               setLogged(true);
               sessionStorage.setItem("isAdmin", "true");
             } else alert("Invalid");
@@ -505,83 +430,50 @@ function ResultsPage() {
             className="border p-2"
             placeholder="Login"
             value={creds.login}
-            onChange={(e) =>
-              setCreds({ ...creds, login: e.target.value })
-            }
+            onChange={(e) => setCreds({ ...creds, login: e.target.value })}
           />
           <input
             className="border p-2"
             type="password"
             placeholder="Password"
             value={creds.password}
-            onChange={(e) =>
-              setCreds({ ...creds, password: e.target.value })
-            }
+            onChange={(e) => setCreds({ ...creds, password: e.target.value })}
           />
-          <button className="bg-blue-600 text-white py-2 rounded-md text-xl">
-            Enter
-          </button>
+          <button className="bg-blue-600 text-white py-2 rounded-md text-xl">Enter</button>
         </form>
       </div>
     );
   }
 
-  // ---------- chart data ----------------------------------------------------------------------
+  // chart data
   const total = counts.reduce((a, b) => a + b, 0);
-  const perc = total
-    ? counts.map((c) => ((c / total) * 100).toFixed(2))
-    : counts;
+  const perc  = total ? counts.map((c) => ((c / total) * 100).toFixed(2)) : counts;
 
   const barData = {
     labels: IMAGES.map((i) => i.name),
-    datasets: [
-      {
-        label: "%",
-        data: perc,
-        backgroundColor: "rgba(54,162,235,0.8)",
-      },
-    ],
+    datasets: [{ label: "%", data: perc, backgroundColor: "rgba(54,162,235,0.8)" }],
   };
   const barOpts = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    scales: {
-      y: {
-        beginAtZero: true,
-        max: 100,
-        ticks: { callback: (v) => `${v}%` },
-      },
-    },
+    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => `${v}%` } } },
   };
 
-  // palette for line chart (already fixed in previous version)
   const COLORS = [
-    "#ef4444",
-    "#3b82f6",
-    "#10b981",
-    "#f59e0b",
-    "#6366f1",
-    "#ec4899",
-    "#14b8a6",
-    "#d946ef",
-    "#84cc16",
-    "#dc2626",
-    "#0ea5e9",
-    "#a855f7",
+    "#ef4444", "#3b82f6", "#10b981", "#f59e0b",
+    "#6366f1", "#ec4899", "#14b8a6", "#d946ef",
+    "#84cc16", "#dc2626", "#0ea5e9", "#a855f7",
   ];
-
   const lineData = {
-    labels: series.map((s) =>
-      new Date(s.ts).toLocaleTimeString()
-    ),
-    datasets: IMAGES.map((img, idx) => ({
+    labels: series.map((s) => new Date(s.ts).toLocaleTimeString()),
+    datasets: IMAGES.map((img, i) => ({
       label: img.name,
-      data: series.map((s) => s.arr[idx]),
+      data: series.map((s) => s.arr[i]),
       fill: false,
       tension: 0.3,
-      borderColor: COLORS[idx % COLORS.length],
-      backgroundColor: COLORS[idx % COLORS.length] + "33",
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: COLORS[i % COLORS.length] + "33",
       borderWidth: 2,
       pointRadius: 3,
       pointHoverRadius: 5,
@@ -593,22 +485,13 @@ function ResultsPage() {
       <header className="flex flex-wrap justify-between items-center gap-4">
         <h1 className="text-4xl font-bold">Vote Results</h1>
         <div className="flex flex-wrap gap-3">
-          <button
-            onClick={exportHist}
-            className="bg-green-600 text-white px-4 py-2 rounded-md text-lg"
-          >
+          <button onClick={exportHist}   className="bg-green-600 text-white px-4 py-2 rounded-md">
             Export histogram CSV
           </button>
-          <button
-            onClick={exportSeries}
-            className="bg-green-600 text-white px-4 py-2 rounded-md text-lg"
-          >
+          <button onClick={exportSeries} className="bg-green-600 text-white px-4 py-2 rounded-md">
             Export series CSV
           </button>
-          <button
-            onClick={resetVotes}
-            className="bg-red-600 text-white px-4 py-2 rounded-md text-lg"
-          >
+          <button onClick={resetVotes}   className="bg-red-600   text-white px-4 py-2 rounded-md">
             Reset votes
           </button>
         </div>
@@ -618,53 +501,33 @@ function ResultsPage() {
 
       {/* histogram */}
       <div className="w-full flex justify-center overflow-x-auto">
-        <div
-          className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md"
-          style={{ minHeight: 800, minWidth: 1200 }}
-        >
-          <Bar
-            data={barData}
-            options={barOpts}
-            height={800}
-            width={1200}
-          />
+        <div className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md" style={{ minHeight: 800, minWidth: 1200 }}>
+          <Bar data={barData} options={barOpts} height={800} width={1200} />
         </div>
       </div>
 
-      {/* line plot */}
-      <h2 className="text-3xl font-bold">
-        Vote evolution over time
-      </h2>
-      <div
-        className="w-full bg-white p-4 rounded-md shadow-md"
-        style={{ minHeight: 800, minWidth: 1200 }}
-      >
-        <Line
-          data={lineData}
-          options={{ responsive: true, maintainAspectRatio: false }}
-          height={800}
-          width={1200}
-        />
+      {/* line plot – keeps ALL points */}
+      <h2 className="text-3xl font-bold">Vote evolution over time</h2>
+      <div className="w-full bg-white p-4 rounded-md shadow-md" style={{ minHeight: 800, minWidth: 1200 }}>
+        <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false }} height={800} width={1200} />
       </div>
 
       <div className="text-center mt-10">
-        <Link className="text-blue-600 underline text-2xl" to="/">
-          Back to voting
-        </Link>
+        <Link to="/" className="text-blue-600 underline text-2xl">Back to voting</Link>
       </div>
     </div>
   );
 }
 
-// ---------- Router -----------------------------------------------------------------------------
+// --------------------------------- ROUTER --------------------------------------------------------
 export default function MainApp() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<VoteGrid />} />
+        <Route path="/"              element={<VoteGrid />} />
         <Route path="/visualization" element={<VisualizationPage />} />
-        <Route path="/results" element={<ResultsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/results"       element={<ResultsPage />} />
+        <Route path="*"              element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
