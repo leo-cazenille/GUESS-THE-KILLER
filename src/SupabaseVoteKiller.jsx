@@ -1,16 +1,13 @@
 // SupabaseVoteKiller.jsx
 // -------------------------------------------------------------------------------------------------
-// Voting demo – React + Vite + Supabase.
+// Voting demo – React + Vite + Supabase
 //
-// Changelog (2025-06-27)
-//   • REAL_KILLER_ID = 5.
-//   • VoteGrid no longer shows the success sentence – instead, after WAIT_MS it
-//     stores each user's % time on the real killer in a new table "scores".
-//   • VisualizationPage switches from “Top 3 suspects” to a live leaderboard
-//     of users + their percentages once WAIT_MS has elapsed.
-//   • Both the admin Reset button and starting the video now clear the scores
-//     table in addition to votes.
-//   • WAIT_SECONDS (default 60 s) remains the single timing knob.
+// 2025-06-27  • Global “video start” lives in table `video_session` so every device
+//              sees it (phones ≠ projector).  Each phone upserts its score (0-100 %)
+//              to table `scores` after the 60-s window.  Leaderboard shows those
+//              scores.  Reset clears votes + scores + session.
+//
+//              WAIT_SECONDS is the single timing knob (default 60 s).
 // -------------------------------------------------------------------------------------------------
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
@@ -51,23 +48,23 @@ ChartJS.register(
   Legend
 );
 
-// --------------------------------------- CONFIG --------------------------------------------------
-const ONE_SECOND    = 1_000;
-const WAIT_SECONDS  = 60;                    // 🔧 change this once to alter the window everywhere
-const WAIT_MS       = WAIT_SECONDS * ONE_SECOND;
+// ------------------------------------ CONFIG -----------------------------------------------------
+const ONE_SECOND   = 1_000;
+const WAIT_SECONDS = 60;                      // 🔧 change once to alter the window everywhere
+const WAIT_MS      = WAIT_SECONDS * ONE_SECOND;
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// suspects
+// suspects ------------------------------------------------------------------
 const NAMES = [
   "D. Poiré",
   "Jane Blond",
   "D. Doubledork",
   "The Director",
-  "Dr. Lafayette",          // ID 5 – the real killer
+  "Dr. Lafayette", // ID 5 – real killer
   "Spiderman",
   "Mew the ripper",
   "Researcher Catnip",
@@ -87,26 +84,28 @@ const REAL_KILLER_ID   = 5;
 const REAL_KILLER_NAME = NAMES[REAL_KILLER_ID - 1];
 
 // ---------------------------------- SHARED HELPERS ----------------------------------------------
+/** Wipe all tables & send “reset” signal */
 async function resetAllAndNotify() {
   await Promise.all([
     supabase.from("votes").delete().gt("image_id", 0),
     supabase.from("scores").delete().gt("score", -1),
+    supabase.from("video_session").update({ started_at: null }).eq("id", 1),
   ]);
-  localStorage.setItem("votes_reset", Date.now().toString());
+  localStorage.setItem("votes_reset", Date.now().toString()); // keeps existing listeners
 }
 
-// ------------------------------- V O T E   G R I D ----------------------------------------------
+// ------------------------------------ VOTE GRID --------------------------------------------------
 function VoteGrid() {
-  const [user, setUser]     = useState(() => localStorage.getItem("voter_name") || "");
-  const [selected, setSel]  = useState(null);
+  const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
+  const [selected, setSel] = useState(null);
 
-  // timing for “time on killer”
-  const [videoStart, setVS] = useState(() => Number(localStorage.getItem("video_start") || 0));
-  const killerMs            = useRef(0);
-  const lastTick            = useRef(Date.now());
-  const recordedRef         = useRef(false);
+  // timing & score
+  const [videoStart, setVS] = useState(0);
+  const killerMs   = useRef(0);
+  const lastTick   = useRef(Date.now());
+  const recorded   = useRef(false);
 
-  // ask for name
+  // ask for name once
   useEffect(() => {
     if (!user) {
       const n = window.prompt("Enter your name to vote:")?.trim();
@@ -130,7 +129,7 @@ function VoteGrid() {
     })();
   }, [user]);
 
-  // handle vote
+  // vote handler
   const vote = async (id) => {
     if (!user) return;
     setSel(id);
@@ -140,33 +139,54 @@ function VoteGrid() {
     );
   };
 
-  // listen for new video start
+  // ---------------------------------------------------- listen for session start (Supabase)
   useEffect(() => {
-    const h = (e) => e.key === "video_start" && setVS(Number(e.newValue));
-    window.addEventListener("storage", h);
-    return () => window.removeEventListener("storage", h);
+    // fetch once
+    (async () => {
+      const { data } = await supabase
+        .from("video_session")
+        .select("started_at")
+        .eq("id", 1)
+        .single();
+      if (data?.started_at) setVS(Date.parse(data.started_at));
+    })();
+
+    // realtime subscription
+    const chan = supabase
+      .channel("session")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "video_session", filter: "id=eq.1" },
+        (payload) => {
+          const ts = payload.new?.started_at;
+          if (ts) setVS(Date.parse(ts));
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(chan);
   }, []);
 
-  // accumulate killer time & push score at the end
+  // ---------------------------------------------------- accumulate killer time & push score
   useEffect(() => {
-    if (!videoStart || recordedRef.current) return;
+    if (!videoStart || recorded.current) return;
 
-    // helper to finalise & upsert
     const finish = async () => {
       if (selected === REAL_KILLER_ID) {
         killerMs.current += Date.now() - lastTick.current;
       }
       const pct = Math.min(100, (killerMs.current / WAIT_MS) * 100).toFixed(1);
-      recordedRef.current = true;
-      await supabase
+      recorded.current = true;
+      const { error } = await supabase
         .from("scores")
         .upsert(
           { user_name: user || "(anonymous)", score: Number(pct) },
           { onConflict: "user_name" }
         );
+      if (error) console.error("Score upsert failed:", error);
     };
 
-    // window already elapsed?
+    // already past window?
     if (Date.now() - videoStart >= WAIT_MS) {
       finish();
       return;
@@ -206,9 +226,7 @@ function VoteGrid() {
             key={img.id}
             onClick={() => vote(img.id)}
             className={`relative rounded-lg overflow-hidden cursor-pointer border-2 md:border-4 transition-shadow ${
-              selected === img.id
-                ? "border-blue-500 shadow-lg"
-                : "border-transparent"
+              selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"
             }`}
           >
             <img
@@ -226,28 +244,47 @@ function VoteGrid() {
   );
 }
 
-// ---------------------------- V I S U A L I Z A T I O N  P A G E -------------------------------
+// ---------------------------------- VISUALIZATION PAGE ------------------------------------------
 function VisualizationPage() {
-  const [results, setRes]    = useState([]);
-  const [leader, setLeader]  = useState([]);
-  const [sidebarW, setW]     = useState(Math.max(260, window.innerWidth * 0.1));
-  const [videoStart, setVS]  = useState(() => Number(localStorage.getItem("video_start") || 0));
-  const dragging             = useRef(false);
-  const VIDEO_ID             = "a3XDry3EwiU";
-  const minW                 = 260;
+  const [results, setRes]  = useState([]);
+  const [leader, setLead]  = useState([]);
+  const [videoStart, setVS] = useState(0);
+  const [sidebarW, setW]    = useState(Math.max(260, window.innerWidth * 0.1));
+  const dragging            = useRef(false);
+  const VIDEO_ID            = "a3XDry3EwiU";
+  const minW                = 260;
 
-  // listen for video_start from other tabs
+  // fetch + subscribe to session start
   useEffect(() => {
-    const h = (e) => e.key === "video_start" && setVS(Number(e.newValue));
-    window.addEventListener("storage", h);
-    return () => window.removeEventListener("storage", h);
+    (async () => {
+      const { data } = await supabase
+        .from("video_session")
+        .select("started_at")
+        .eq("id", 1)
+        .single();
+      if (data?.started_at) setVS(Date.parse(data.started_at));
+    })();
+
+    const chan = supabase
+      .channel("session")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "video_session", filter: "id=eq.1" },
+        (payload) => {
+          const ts = payload.new?.started_at;
+          if (ts) setVS(Date.parse(ts));
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(chan);
   }, []);
 
   const afterWindow = videoStart && Date.now() - videoStart >= WAIT_MS;
 
-  // ---------------- poll VOTES (before window) ---------------------------------
+  // ---------------- poll votes (before window) ---------------
   useEffect(() => {
-    if (afterWindow) return;          // stop once leaderboard takes over
+    if (afterWindow) return;
     const poll = async () => {
       const { data } = await supabase.from("votes").select("image_id");
       const m = new Map();
@@ -259,7 +296,7 @@ function VisualizationPage() {
     return () => clearInterval(id);
   }, [afterWindow]);
 
-  // --------------- poll SCORES (after window) ----------------------------------
+  // ---------------- poll scores (after window) ---------------
   useEffect(() => {
     if (!afterWindow) return;
     const fetchScores = async () => {
@@ -267,14 +304,14 @@ function VisualizationPage() {
         .from("scores")
         .select("user_name, score")
         .order("score", { ascending: false });
-      setLeader(data || []);
+      setLead(data || []);
     };
     fetchScores();
     const id = setInterval(fetchScores, 3_000);
     return () => clearInterval(id);
   }, [afterWindow]);
 
-  // derive top-3 (for pre-window mode)
+  // derive top-3 suspects
   const { display, total } = useMemo(() => {
     const arr   = IMAGES.map((i) => ({
       ...i,
@@ -302,15 +339,15 @@ function VisualizationPage() {
     };
   }, []);
 
-  // video start → reset all tables + new start time
+  // video start handler – resets everything, sets started_at
   const didReset = useRef(false);
   const onStart  = async () => {
     if (didReset.current) return;
     didReset.current = true;
     await resetAllAndNotify();
-    const ts = Date.now();
-    localStorage.setItem("video_start", ts.toString());
-    setVS(ts);                // in same tab too
+    const ts = new Date().toISOString();
+    await supabase.from("video_session").upsert({ id: 1, started_at: ts });
+    setVS(Date.parse(ts));
   };
 
   return (
@@ -384,7 +421,7 @@ function VisualizationPage() {
         ) : (
           <>
             <p className="text-2xl font-extrabold text-center text-black">
-              Leaderboard – who stuck with the killer the longest?
+              Leaderboard – who trusted the killer the longest?
             </p>
             {leader.length === 0 ? (
               <p className="text-xl italic text-black">No scores yet</p>
@@ -398,7 +435,9 @@ function VisualizationPage() {
                     <span className="font-bold text-xl">
                       {idx + 1}. {s.user_name}
                     </span>
-                    <span className="font-mono text-xl">{s.score.toFixed(1)}%</span>
+                    <span className="font-mono text-xl">
+                      {s.score.toFixed(1)}%
+                    </span>
                   </li>
                 ))}
               </ol>
@@ -410,22 +449,45 @@ function VisualizationPage() {
   );
 }
 
-// ----------------------------------------- R E S U L T S ----------------------------------------
+// --------------------------------------- RESULTS PAGE -------------------------------------------
 function ResultsPage() {
   const [logged, setLogged] = useState(() => sessionStorage.getItem("isAdmin") === "true");
-  const [creds,  setCreds]  = useState({ login: "", password: "" });
+  const [creds, setCreds]   = useState({ login: "", password: "" });
   const [counts, setCnt]    = useState(Array(IMAGES.length).fill(0));
   const [series, setSer]    = useState([]);
-  const [videoStart, setVS] = useState(() => Number(localStorage.getItem("video_start") || 0));
+  const [videoStart, setVS] = useState(0);
 
-  // listen for resets / video starts
+  // listen for resets or session start
   useEffect(() => {
     const h = (e) => {
-      if (e.key === "votes_reset")  setSer([]);
-      if (e.key === "video_start") setVS(Number(e.newValue));
+      if (e.key === "votes_reset") setSer([]);
     };
     window.addEventListener("storage", h);
     return () => window.removeEventListener("storage", h);
+  }, []);
+
+  // fetch + subscribe to session start
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("video_session")
+        .select("started_at")
+        .eq("id", 1)
+        .single();
+      if (data?.started_at) setVS(Date.parse(data.started_at));
+    })();
+    const chan = supabase
+      .channel("session")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "video_session", filter: "id=eq.1" },
+        (payload) => {
+          const ts = payload.new?.started_at;
+          if (ts) setVS(Date.parse(ts));
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(chan);
   }, []);
 
   // poll votes
@@ -457,14 +519,15 @@ function ResultsPage() {
     };
   }, [logged, videoStart]);
 
-  // reset by admin
+  // admin reset
   const resetVotes = async () => {
     await resetAllAndNotify();
     setCnt(Array(IMAGES.length).fill(0));
     setSer([]);
+    setVS(0);
   };
 
-  // CSV helpers
+  // CSV helpers (same as before)
   const csv  = (rows) => rows.map((r) => r.join(",")).join("\n");
   const save = (t, n) => {
     const b = new Blob([t], { type: "text/csv" });
@@ -473,20 +536,14 @@ function ResultsPage() {
     a.href = u; a.download = n; a.click(); URL.revokeObjectURL(u);
   };
   const exportHist   = () =>
-    save(
-      csv([["Character", "Votes"], ...IMAGES.map((img, i) => [img.name, counts[i]])]),
-      "histogram.csv"
-    );
+    save(csv([["Character", "Votes"], ...IMAGES.map((img, i) => [img.name, counts[i]])]),
+         "histogram.csv");
   const exportSeries = () =>
-    save(
-      csv([
-        ["timestamp", ...IMAGES.map((i) => i.name)],
-        ...series.map((s) => [new Date(s.ts).toISOString(), ...s.arr]),
-      ]),
-      "time_series.csv"
-    );
+    save(csv([["timestamp", ...IMAGES.map((i) => i.name)],
+              ...series.map((s) => [new Date(s.ts).toISOString(), ...s.arr])]),
+         "time_series.csv");
 
-  // ---------- login box ------------------------------------------------------
+  // login form
   if (!logged) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
@@ -496,7 +553,7 @@ function ResultsPage() {
             if (creds.login === "admin" && creds.password === "tralala42") {
               setLogged(true);
               sessionStorage.setItem("isAdmin", "true");
-            } else alert("Invalid");
+            } else alert("Invalid credentials");
           }}
           className="bg-white p-6 rounded-md shadow-md flex flex-col gap-4 w-80"
         >
@@ -520,7 +577,7 @@ function ResultsPage() {
     );
   }
 
-  // ---------- chart data -----------------------------------------------------
+  // chart data --------------------------------------------------------------
   const total = counts.reduce((a, b) => a + b, 0);
   const perc  = total ? counts.map((c) => ((c / total) * 100).toFixed(2)) : counts;
 
@@ -528,8 +585,8 @@ function ResultsPage() {
     labels: IMAGES.map((i) => i.name),
     datasets: [{ label: "%", data: perc, backgroundColor: "rgba(54,162,235,0.8)" }],
   };
-  const tickFont = { size: 17 };       // +5 px compared with default
-  const barOpts  = {
+  const tickFont = { size: 17 };   // bigger axis ticks
+  const barOpts = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
@@ -613,7 +670,7 @@ function ResultsPage() {
   );
 }
 
-// ------------------------------------------ ROUTER ----------------------------------------------
+// ------------------------------------------- ROUTER ---------------------------------------------
 export default function MainApp() {
   return (
     <Router>
