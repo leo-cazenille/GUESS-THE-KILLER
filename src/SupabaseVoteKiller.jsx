@@ -1,15 +1,13 @@
 // SupabaseVoteKiller.jsx
 // -------------------------------------------------------------------------------------------------
-// Voting demo – React + Vite + Supabase.
+// Voting demo ‒ React + Vite + Supabase
 //
 // NEW (2025-06-27)
-//   • Username shown under the VoteGrid title (lg).
-//   • REAL_KILLER_ID = 5.
-//   • WAIT_SECONDS constant (default 60 s) replaces previous 1200 s everywhere.
-//   • Sidebar text in VisualizationPage forced to black so it’s visible.
-//   • ResultsPage: axis-tick font size +5 px.
-//   • VoteGrid final sentence wording & spacing fixed.
-//
+//   • VoteGrid no longer renders the final “correct” message.
+//   • At the end of WAIT_SECONDS, VoteGrid stores the user’s score (% time on real killer)
+//     in a Supabase table `scores` (schema: user_name text PK, pct numeric).
+//   • VisualizationPage shows the live top-3 *until* WAIT_SECONDS has elapsed, then
+//     switches to a leaderboard of all users and their scores.
 // -------------------------------------------------------------------------------------------------
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
@@ -51,9 +49,9 @@ ChartJS.register(
 );
 
 // --------------------------------------- CONFIG --------------------------------------------------
-const ONE_SECOND    = 1_000;
-const WAIT_SECONDS  = 60;                    // 🔧 change this to use a different window everywhere
-const WAIT_MS       = WAIT_SECONDS * ONE_SECOND;
+const ONE_SECOND   = 1_000;
+const WAIT_SECONDS = 60;                      // 🔧 window for score (change once)
+const WAIT_MS      = WAIT_SECONDS * ONE_SECOND;
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -66,7 +64,7 @@ const NAMES = [
   "Jane Blond",
   "D. Doubledork",
   "The Director",
-  "Dr. Lafayette",          // ID 5  ← NEW real killer
+  "Dr. Lafayette", // ID 5  ← real killer
   "Spiderman",
   "Mew the ripper",
   "Researcher Catnip",
@@ -77,15 +75,15 @@ const NAMES = [
 ];
 const asset  = (p) => `${import.meta.env.BASE_URL}${p}`;
 const IMAGES = NAMES.map((name, i) => ({
-  id: i + 1,
+  id:  i + 1,
   name,
   src: asset(`photos/${i + 1}.jpg`),
 }));
 
-const REAL_KILLER_ID   = 5;                 // ← NEW
+const REAL_KILLER_ID   = 5;
 const REAL_KILLER_NAME = NAMES[REAL_KILLER_ID - 1];
 
-// ------------------------------- SHARED HELPERS --------------------------------------------------
+// -------------------------------- SHARED HELPERS -------------------------------------------------
 async function resetVotesAndNotify() {
   await supabase.from("votes").delete().gt("image_id", 0);
   localStorage.setItem("votes_reset", Date.now().toString());
@@ -96,11 +94,11 @@ function VoteGrid() {
   const [user, setUser]     = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSel]  = useState(null);
 
-  // timing / % on killer
+  // timers
   const [videoStart, setVS] = useState(() => Number(localStorage.getItem("video_start") || 0));
   const killerMs            = useRef(0);
   const lastTick            = useRef(Date.now());
-  const [pctKiller, setPct] = useState(null);
+  const sentRef             = useRef(localStorage.getItem("score_sent") === "true");
 
   // ask for name
   useEffect(() => {
@@ -145,35 +143,39 @@ function VoteGrid() {
 
   // accumulate killer time
   useEffect(() => {
-    if (!videoStart) return;
+    if (!videoStart || sentRef.current) return;
 
-    // window already elapsed?
-    if (Date.now() - videoStart >= WAIT_MS) {
-      if (selected === REAL_KILLER_ID) {
-        killerMs.current += Date.now() - lastTick.current;
-      }
-      const pct = Math.min(100, (killerMs.current / WAIT_MS) * 100);
-      setPct(pct.toFixed(1));
-      return;
-    }
+    const stopAt = videoStart + WAIT_MS;
 
-    const int = setInterval(() => {
+    const int = setInterval(async () => {
       const now = Date.now();
 
+      // accumulate
       if (selected === REAL_KILLER_ID) {
         killerMs.current += now - lastTick.current;
       }
       lastTick.current = now;
 
-      if (now - videoStart >= WAIT_MS) {
+      // finished?
+      if (now >= stopAt) {
+        if (selected === REAL_KILLER_ID) {
+          killerMs.current += now - lastTick.current;
+        }
         const pct = Math.min(100, (killerMs.current / WAIT_MS) * 100);
-        setPct(pct.toFixed(1));
+
+        // store score
+        await supabase.from("scores").upsert(
+          { user_name: user, pct },
+          { onConflict: "user_name" }
+        );
+        localStorage.setItem("score_sent", "true");
+        sentRef.current = true;
         clearInterval(int);
       }
     }, ONE_SECOND);
 
     return () => clearInterval(int);
-  }, [selected, videoStart]);
+  }, [selected, videoStart, user]);
 
   return (
     <div className="p-4 max-w-screen-2xl mx-auto">
@@ -209,27 +211,35 @@ function VoteGrid() {
           </figure>
         ))}
       </div>
-
-      {pctKiller !== null && (
-        <p className="mt-6 text-2xl sm:text-3xl font-bold text-center text-green-700">
-          You correctly selected the real killer ({REAL_KILLER_NAME}) for {pctKiller}% of the
-          duration of the movie.
-        </p>
-      )}
     </div>
   );
 }
 
-// ---------------------------------- VISUALIZATION PAGE ------------------------------------------
+// --------------------------------- VISUALIZATION PAGE -------------------------------------------
 function VisualizationPage() {
-  const [results, setRes] = useState([]);
-  const [sidebarW, setW]  = useState(Math.max(260, window.innerWidth * 0.1));
-  const dragging          = useRef(false);
-  const VIDEO_ID          = "a3XDry3EwiU";
-  const minW              = 260;
+  const [results, setRes]       = useState([]);
+  const [sidebarW, setW]        = useState(Math.max(260, window.innerWidth * 0.1));
+  const dragging                = useRef(false);
+  const VIDEO_ID                = "a3XDry3EwiU";
+  const minW                    = 260;
 
-  // poll votes
+  const [videoStart, setVS]     = useState(() => Number(localStorage.getItem("video_start") || 0));
+  const [leaderboard, setLB]    = useState([]);
+
+  // track video start from other tabs
   useEffect(() => {
+    const h = (e) => e.key === "video_start" && setVS(Number(e.newValue));
+    window.addEventListener("storage", h);
+    return () => window.removeEventListener("storage", h);
+  }, []);
+
+  const now           = Date.now();
+  const showLeaderboard = videoStart && now - videoStart >= WAIT_MS;
+
+  // Poll votes (only while leaderboard not yet active)
+  useEffect(() => {
+    if (showLeaderboard) return;
+
     const poll = async () => {
       const { data } = await supabase.from("votes").select("image_id");
       const m = new Map();
@@ -239,8 +249,26 @@ function VisualizationPage() {
     poll();
     const id = setInterval(poll, 3_000);
     return () => clearInterval(id);
-  }, []);
+  }, [showLeaderboard]);
 
+  // Poll leaderboard once the window is over
+  useEffect(() => {
+    if (!showLeaderboard) return;
+
+    const poll = async () => {
+      const { data } = await supabase.from("scores").select("*");
+      setLB(
+        data
+          .map((d) => ({ ...d, pct: Number(d.pct) }))
+          .sort((a, b) => b.pct - a.pct)
+      );
+    };
+    poll();
+    const id = setInterval(poll, 10_000);
+    return () => clearInterval(id);
+  }, [showLeaderboard]);
+
+  // Derive top-3 *
   const { display, total } = useMemo(() => {
     const arr   = IMAGES.map((i) => ({
       ...i,
@@ -268,15 +296,17 @@ function VisualizationPage() {
     };
   }, []);
 
-  // video start
+  // video start handler (resets votes & timer)
   const didReset = useRef(false);
   const onStart  = async () => {
     if (didReset.current) return;
     didReset.current = true;
     await resetVotesAndNotify();
     localStorage.setItem("video_start", Date.now().toString());
+    localStorage.removeItem("score_sent");     // allow users to post again next round
   };
 
+  // ------------------------------- UI -----------------------------------------------------------
   return (
     <div className="h-screen w-screen flex overflow-hidden select-none">
       {/* video */}
@@ -306,20 +336,35 @@ function VisualizationPage() {
         style={{ width: sidebarW }}
       >
         <p className="text-2xl font-extrabold text-center text-black">
-          Who is the real killer? Vote at:
+          {showLeaderboard
+            ? "Leaderboard:"
+            : "Who is the real killer? Vote at:"}
         </p>
 
-        <div className="w-[95%]">
-          <QRCode
-            value="https://leo-cazenille.github.io/GUESS-THE-KILLER/"
-            size={150}
-            style={{ width: "100%", height: "auto" }}
-          />
-        </div>
+        {!showLeaderboard && (
+          <div className="w-[95%]">
+            <QRCode
+              value="https://leo-cazenille.github.io/GUESS-THE-KILLER/"
+              size={150}
+              style={{ width: "100%", height: "auto" }}
+            />
+          </div>
+        )}
 
-        <p className="text-2xl font-bold text-center text-black">Top 3 most voted:</p>
-
-        {display.length === 0 ? (
+        {/* Top-3 or Leaderboard */}
+        {showLeaderboard ? (
+          <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto">
+            {leaderboard.length === 0 ? (
+              <p className="text-xl text-black mt-4">Scores pending…</p>
+            ) : (
+              leaderboard.map((u, idx) => (
+                <p key={u.user_name} className="text-2xl font-bold text-black">
+                  {idx + 1}. {u.user_name}: {u.pct.toFixed(1)}%
+                </p>
+              ))
+            )}
+          </div>
+        ) : display.length === 0 ? (
           <p className="text-2xl italic mt-2 text-black">No votes yet</p>
         ) : (
           <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-y-auto">
@@ -341,13 +386,17 @@ function VisualizationPage() {
           </div>
         )}
 
-        <p className="text-xl text-center text-black mb-2">{total} total votes</p>
+        {!showLeaderboard && (
+          <p className="text-xl text-center text-black mb-2">{total} total votes</p>
+        )}
       </div>
     </div>
   );
 }
 
-// ----------------------------------------- RESULTS ----------------------------------------------
+// ------------------------------------------ RESULTS ----------------------------------------------
+/*  (unchanged since the previous revision ‒ still larger tick labels, all series kept)  */
+
 function ResultsPage() {
   const [logged, setLogged] = useState(() => sessionStorage.getItem("isAdmin") === "true");
   const [creds,  setCreds]  = useState({ login: "", password: "" });
@@ -355,7 +404,6 @@ function ResultsPage() {
   const [series, setSer]    = useState([]);
   const [videoStart, setVS] = useState(() => Number(localStorage.getItem("video_start") || 0));
 
-  // listen for resets / video start
   useEffect(() => {
     const h = (e) => {
       if (e.key === "votes_reset")  setSer([]);
@@ -365,7 +413,6 @@ function ResultsPage() {
     return () => window.removeEventListener("storage", h);
   }, []);
 
-  // poll
   useEffect(() => {
     if (!logged) return;
 
@@ -394,14 +441,12 @@ function ResultsPage() {
     };
   }, [logged, videoStart]);
 
-  // reset by admin
   const resetVotes = async () => {
     await resetVotesAndNotify();
     setCnt(Array(IMAGES.length).fill(0));
     setSer([]);
   };
 
-  // CSV
   const csv  = (rows) => rows.map((r) => r.join(",")).join("\n");
   const save = (t, n) => {
     const b = new Blob([t], { type: "text/csv" });
@@ -423,7 +468,6 @@ function ResultsPage() {
       "time_series.csv"
     );
 
-  // not logged in yet
   if (!logged) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
@@ -457,7 +501,7 @@ function ResultsPage() {
     );
   }
 
-  // chart data
+  // chart data & options (same as previous revision)
   const total = counts.reduce((a, b) => a + b, 0);
   const perc  = total ? counts.map((c) => ((c / total) * 100).toFixed(2)) : counts;
 
@@ -465,7 +509,7 @@ function ResultsPage() {
     labels: IMAGES.map((i) => i.name),
     datasets: [{ label: "%", data: perc, backgroundColor: "rgba(54,162,235,0.8)" }],
   };
-  const tickFont = { size: 17 };         // +5 px compared with default ≈12
+  const tickFont = { size: 17 };
   const barOpts  = {
     responsive: true,
     maintainAspectRatio: false,
@@ -497,10 +541,7 @@ function ResultsPage() {
   const lineOpts = {
     responsive: true,
     maintainAspectRatio: false,
-    scales: {
-      x: { ticks: { font: tickFont } },
-      y: { ticks: { font: tickFont } },
-    },
+    scales: { x: { ticks: { font: tickFont } }, y: { ticks: { font: tickFont } } },
   };
 
   return (
@@ -522,7 +563,6 @@ function ResultsPage() {
 
       <p className="text-2xl">{total} total votes</p>
 
-      {/* histogram */}
       <div className="w-full flex justify-center overflow-x-auto">
         <div
           className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md"
@@ -532,7 +572,6 @@ function ResultsPage() {
         </div>
       </div>
 
-      {/* line plot */}
       <h2 className="text-3xl font-bold">Vote evolution over time</h2>
       <div
         className="w-full bg-white p-4 rounded-md shadow-md"
