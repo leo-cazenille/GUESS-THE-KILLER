@@ -57,6 +57,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+window.supabase = supabase; // DEBUG XXX
 
 // suspects ------------------------------------------------------------------
 const NAMES = [
@@ -94,18 +95,17 @@ async function resetAllAndNotify() {
   localStorage.setItem("votes_reset", Date.now().toString()); // keeps existing listeners
 }
 
-// ------------------------------------ VOTE GRID --------------------------------------------------
+// ----------------------------- VOTE GRID --------------------------------------------------------
 function VoteGrid() {
-  const [user, setUser] = useState(() => localStorage.getItem("voter_name") || "");
+  const [user, setUser]   = useState(() => localStorage.getItem("voter_name") || "");
   const [selected, setSel] = useState(null);
 
-  // timing & score
-  const [videoStart, setVS] = useState(0);
-  const killerMs   = useRef(0);
-  const lastTick   = useRef(Date.now());
-  const recorded   = useRef(false);
+  // ───────────────── timing / scoring ─────────────────
+  const [videoStart, setVS]  = useState(0);     // ms since epoch
+  const killerMsRef          = useRef(0);       // time spent on killer so far
+  const lastTickRef          = useRef(Date.now());
 
-  // ask for name once
+  // ask name once ------------------------------------------------------------
   useEffect(() => {
     if (!user) {
       const n = window.prompt("Enter your name to vote:")?.trim();
@@ -116,7 +116,7 @@ function VoteGrid() {
     }
   }, [user]);
 
-  // fetch previous vote
+  // fetch previous vote ------------------------------------------------------
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -129,7 +129,66 @@ function VoteGrid() {
     })();
   }, [user]);
 
-  // vote handler
+  // poll `video_session` once a second until we get the start timestamp ------
+  useEffect(() => {
+    if (videoStart) return;          // already have it
+
+    const poll = async () => {
+      const { data } = await supabase
+        .from("video_session")
+        .select("started_at")
+        .eq("id", 1)
+        .maybeSingle();
+      if (data?.started_at) setVS(Date.parse(data.started_at));
+    };
+    poll();
+    const id = setInterval(poll, ONE_SECOND);
+    return () => clearInterval(id);
+  }, [videoStart]);
+
+  // ----------------------- CONTINUOUS SCORING & UPSERT ----------------------
+  useEffect(() => {
+    if (!videoStart) return;         // nothing to do until movie has started
+
+    // helper that does the accounting + writes the row
+    const pushScore = async () => {
+      const now  = Date.now();
+      const dt   = now - lastTickRef.current;
+      lastTickRef.current = now;
+
+      if (selected === REAL_KILLER_ID) {
+        killerMsRef.current += dt;
+      }
+
+      // percentage relative to the full WAIT_MS window
+      const pct = Math.min(100, (killerMsRef.current / WAIT_MS) * 100).toFixed(1);
+
+      // send to Supabase (upsert so we overwrite our own row)
+      const { error } = await supabase
+        .from("scores")
+        .upsert(
+          { user_name: user || "(anonymous)", score: Number(pct) },
+          { onConflict: "user_name" }
+        );
+      if (error) console.error("Score upsert failed →", error);
+    };
+
+    // push immediately (so a short-lived tab writes at least once)
+    pushScore();
+
+    // then every 3 s until the full window elapses
+    const SEND_EVERY = 3_000;              // 3 s
+    const id = setInterval(() => {
+      if (Date.now() - videoStart >= WAIT_MS) {
+        clearInterval(id);                 // finished the 60-s window
+      }
+      pushScore();
+    }, SEND_EVERY);
+
+    return () => clearInterval(id);        // clean-up on tab close / nav away
+  }, [videoStart, selected, user]);
+
+  // vote handler -------------------------------------------------------------
   const vote = async (id) => {
     if (!user) return;
     setSel(id);
@@ -139,88 +198,16 @@ function VoteGrid() {
     );
   };
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  //  Poll video_session once a second until started_at appears
-  // ───────────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let stop = false;
-    if (videoStart) return;          // already have it → nothing to do
-
-    const tick = async () => {
-      const { data, error } = await supabase
-        .from("video_session")
-        .select("started_at")
-        .eq("id", 1)
-        .single();
-      if (error) {
-        console.error("video_session poll failed:", error);
-        return;
-      }
-      if (data?.started_at) {
-        setVS(Date.parse(data.started_at));
-        stop = true;
-      }
-    };
-
-    tick();                                   // first immediate fetch
-    const int = setInterval(() => { if (!stop) tick(); }, ONE_SECOND);
-    return () => clearInterval(int);
-  }, [videoStart]);
-  // ───────────────────────
-
-  // ---------------------------------------------------- accumulate killer time & push score
-  useEffect(() => {
-    if (!videoStart || recorded.current) return;
-
-    const finish = async () => {
-      if (selected === REAL_KILLER_ID) {
-        killerMs.current += Date.now() - lastTick.current;
-      }
-      const pct = Math.min(100, (killerMs.current / WAIT_MS) * 100).toFixed(1);
-      recorded.current = true;
-      const { error } = await supabase
-        .from("scores")
-        .upsert(
-          { user_name: user || "(anonymous)", score: Number(pct) },
-          { onConflict: "user_name" }
-        );
-      if (error) console.error("Score upsert failed:", error);
-    };
-
-    // already past window?
-    if (Date.now() - videoStart >= WAIT_MS) {
-      finish();
-      return;
-    }
-
-    const int = setInterval(() => {
-      const now = Date.now();
-      if (selected === REAL_KILLER_ID) {
-        killerMs.current += now - lastTick.current;
-      }
-      lastTick.current = now;
-
-      if (now - videoStart >= WAIT_MS) {
-        clearInterval(int);
-        finish();
-      }
-    }, ONE_SECOND);
-
-    return () => clearInterval(int);
-  }, [selected, videoStart, user]);
-
+  // ----------------------------- UI -----------------------------------------
   return (
     <div className="p-4 max-w-screen-2xl mx-auto">
       <h1 className="text-3xl font-bold mb-4 text-center">
         Who do you think is the real killer?
         {user && (
-          <span className="block text-lg font-medium mt-1">
-            [username: {user}]
-          </span>
+          <span className="block text-lg font-medium mt-1">[username: {user}]</span>
         )}
       </h1>
 
-      {/* voting grid */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
         {IMAGES.map((img) => (
           <figure
