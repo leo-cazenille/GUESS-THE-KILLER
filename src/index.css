@@ -168,11 +168,16 @@ button:focus-visible {
   body {
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 25%, #dee2e6 50%, #ced4da 75%, #adb5bd 100%);
     background-attachment: fixed;
-  }
+   }
   a:hover {
     color: #747bff;
   }
   button {
     background-color: #f9f9f9;
   }
+}
+
+@keyframes pulse-gold {
+  0%,100% { box-shadow: 0 0 0   0 rgba(255,215,0,0.7); }
+  50%     { box-shadow: 0 0 12px 6px rgba(255,215,0,0.9); }
 }
