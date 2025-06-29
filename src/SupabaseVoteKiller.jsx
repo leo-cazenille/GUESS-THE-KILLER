@@ -185,6 +185,7 @@ async function resetAllAndNotify() {
   await Promise.all([
     supabase.from("votes").delete().gt("image_id", 0),
     supabase.from("scores").delete().gt("score", -1),
+    supabase.from("vote_events").delete().gt("id", 0),
     supabase.from("video_session").upsert({ id: 1, started_at: null }),
   ]);
   localStorage.setItem("votes_reset", Date.now().toString());
@@ -202,7 +203,6 @@ function VoteGrid() {
 
   const killerMsRef = useRef(0);
   const lastTickRef = useRef(Date.now());
-  const [hydrated, setHydrated] = useState(false);
 
 
   // clock --------------------------------------------------------------------
@@ -263,54 +263,6 @@ function VoteGrid() {
     return () => clearInterval(id);
   }, [videoStart]);
 
-  // Ask Supabase for the previous percentage *before* you start scoring
-  useEffect(() => {
-    if (!user || !videoStart) return;
-  
-    (async () => {
-      const { data } = await supabase
-        .from("scores")
-        .select("score")
-        .eq("user_name", user)
-        .single();
-  
-      if (data) {
-        // 2) convert %  →  milliseconds already spent on the killer
-        killerMsRef.current = (data.score / 100) * WAIT_MS;
-      }
-  
-      // 3) make sure the next dt starts **now**
-      lastTickRef.current = Date.now();
-      setHydrated(true);
-    })();
-  }, [videoStart, user]);
-
-  // continuous scoring -------------------------------------------------------
-  useEffect(() => {
-    if (!videoStart || !hydrated) return;
-
-    const pushScore = async () => {
-      const now = Date.now();
-      const dt  = now - lastTickRef.current;
-      lastTickRef.current = now;
-
-      if (selected === REAL_KILLER_ID) killerMsRef.current += dt;
-
-      const pct = Math.min(100, (killerMsRef.current / WAIT_MS) * 100).toFixed(1);
-      await supabase.from("scores").upsert(
-        { user_name: user || "(anonymous)", score: Number(pct) },
-        { onConflict: "user_name" }
-      );
-    };
-
-    pushScore();
-    const id = setInterval(() => {
-      if (Date.now() - videoStart >= WAIT_MS) clearInterval(id);
-      pushScore();
-    }, 3_000);
-
-    return () => clearInterval(id);
-  }, [videoStart, selected, user, hydrated]);
 
   // vote handler -------------------------------------------------------------
   const vote = async (id) => {
@@ -327,10 +279,10 @@ function VoteGrid() {
     if (Date.now() - videoStart >= WAIT_MS || !available) return;
 
     setSel(id);
-    await supabase.from("votes").upsert(
-      { user_name: user, image_id: id },
-      { onConflict: "user_name" }
-    );
+    // 1) live last-choice table (for the histogram / Top-3)
+    await supabase.from("votes").upsert({ user_name: user, image_id: id }, { onConflict: "user_name" });
+    // 2) append-only event log (one row per click)
+    await supabase.from("vote_events").insert({ user_name: user, image_id: id });
   };
 
   const votingClosed = videoStart && Date.now() - videoStart >= WAIT_MS;
@@ -403,7 +355,6 @@ function VoteGrid() {
               : Infinity;
             const available =
               videoStart && elapsedSec >= appearAt && !votingClosed;
-            const greyed = !available;
             const isSel     = selected === img.id;
 
             return (
@@ -567,7 +518,7 @@ function VisualizationPage() {
     if (!afterWindow) return;
     const fetchScores = async () => {
       const { data } = await supabase
-        .from("scores")
+        .from("scores_v")
         .select("user_name, score")
         .order("score", { ascending: false });
       setLead(data || []);
@@ -609,7 +560,7 @@ function VisualizationPage() {
 
     // one place to change the colour later if needed
     const histColor = "#fef3c7";   // Tailwind `text-amber-100`
-    const bigTickFont = { size: 32 }; // ≈ double the default
+    const bigTickFont = { size: 16 }; // ≈ double the default
 
     return {
       data: {
@@ -641,6 +592,8 @@ function VisualizationPage() {
               color: histColor,                 // ← tick label colour
               callback: (v) => `${v}%`,
               font: bigTickFont,
+              minRotation: 45,
+              maxRotation: 45,
             },
             grid:   { color: histColor + "55" }, // grid lines
             border: { color: histColor },        // axis line
@@ -656,7 +609,7 @@ function VisualizationPage() {
         },
       },
     };
-  }, [results]);
+  }, [results, charTimes, elapsedSec]);
 
   // drag sidebar
   useEffect(() => {
@@ -739,7 +692,7 @@ function VisualizationPage() {
                     />
                   </div>
                 </div>
-                <p className="text-3xl mt-4 font-bold text-center text-amber-200 font-['Crimson_Text']">
+                <p className="text-4xl mt-4 font-bold text-center text-amber-200 font-['Crimson_Text']">
                   {total} total votes
                 </p>
               </div>
@@ -780,11 +733,11 @@ function VisualizationPage() {
           </>
         ) : (
           <>
-            <p className="text-4xl font-extrabold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
+            <p className="text-3xl font-extrabold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
               Leaderboard – who guessed the killer the longest?
             </p>
             {leader.length === 0 ? (
-              <p className="text-2xl italic text-amber-200 font-['Crimson_Text']">No scores yet</p>
+              <p className="text-3xl italic text-amber-200 font-['Crimson_Text']">No scores yet</p>
             ) : (
               <ol className="flex-1 w-full overflow-y-auto flex flex-col gap-2">
                 {leader.map((s, idx) => (
