@@ -739,7 +739,9 @@ function VisualizationPage() {
                     />
                   </div>
                 </div>
-                <p className="text-xl mt-2 text-center text-amber-200 font-['Crimson_Text']">{total} total votes</p>
+                <p className="text-3xl mt-4 font-bold text-center text-amber-200 font-['Crimson_Text']">
+                  {total} total votes
+                </p>
               </div>
             ) : (
               <>   {/* ▼  ORIGINAL PORTRAIT LAYOUT restored */}
@@ -769,7 +771,7 @@ function VisualizationPage() {
                   </div>
                 )}
 
-                <p className="text-xl text-center text-amber-200 mb-2 font-['Crimson_Text']">
+                <p className="text-3xl mt-4 font-bold text-center text-amber-200 font-['Crimson_Text']">
                   {total} total votes
                 </p>
               </>
@@ -778,11 +780,11 @@ function VisualizationPage() {
           </>
         ) : (
           <>
-            <p className="text-2xl font-extrabold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
+            <p className="text-4xl font-extrabold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
               Leaderboard – who guessed the killer the longest?
             </p>
             {leader.length === 0 ? (
-              <p className="text-xl italic text-amber-200 font-['Crimson_Text']">No scores yet</p>
+              <p className="text-2xl italic text-amber-200 font-['Crimson_Text']">No scores yet</p>
             ) : (
               <ol className="flex-1 w-full overflow-y-auto flex flex-col gap-2">
                 {leader.map((s, idx) => (
@@ -790,10 +792,10 @@ function VisualizationPage() {
                     key={s.user_name}
                     className="flex justify-between px-3 py-2 bg-slate-700/50 rounded-md text-amber-100 border border-slate-600"
                   >
-                    <span className="font-bold text-xl font-['Crimson_Text']">
+                    <span className="font-bold text-2xl font-['Crimson_Text']">
                       {idx + 1}. {s.user_name}
                     </span>
-                    <span className="font-mono text-xl text-amber-200">
+                    <span className="font-mono text-2xl text-amber-200">
                       {s.score.toFixed(1)}%
                     </span>
                   </li>
