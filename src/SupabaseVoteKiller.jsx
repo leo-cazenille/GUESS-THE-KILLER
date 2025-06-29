@@ -249,21 +249,29 @@ function VoteGrid() {
     })();
   }, [user]);
 
-  // poll video_session until started_at --------------------------------------
+  // live session listener – reacts to BOTH reset (started_at → null)
+  // and new round (null/old → fresh ISO timestamp)
   useEffect(() => {
-    if (videoStart) return;
-    const poll = async () => {
-      const { data } = await supabase
-        .from("video_session")
-        .select("started_at")
-        .eq("id", 1)
-        .maybeSingle();
-      if (data?.started_at) setVS(Date.parse(data.started_at));
-    };
-    poll();
-    const id = setInterval(poll, ONE_SECOND);
-    return () => clearInterval(id);
-  }, [videoStart]);
+    const chan = supabase
+      .channel("session")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "video_session", filter: "id=eq.1" },
+        ({ new: row }) => {
+          if (row.started_at) {
+            // → round started
+            setVS(Date.parse(row.started_at));
+            setSel(null);          // forget last pick
+          } else {
+            // → admin reset – back to “grey grid / waiting …”
+            setVS(0);
+            setSel(null);
+          }
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(chan);
+  }, []);
 
 
   // vote handler -------------------------------------------------------------
@@ -800,7 +808,15 @@ function ResultsPage() {
         { event: "UPDATE", schema: "public", table: "video_session", filter: "id=eq.1" },
         (payload) => {
           const ts = payload.new?.started_at;
-          if (ts) setVS(Date.parse(ts));
+          if (ts) {
+            // new round
+            setVS(Date.parse(ts));
+          } else {
+            // reset – blank charts & timers
+            setVS(0);
+            setCnt(Array(IMAGES.length).fill(0));
+            setSer([]);
+          }
         }
       )
       .subscribe();
