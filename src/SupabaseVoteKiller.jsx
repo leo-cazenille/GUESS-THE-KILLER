@@ -355,6 +355,8 @@ function VoteGrid() {
               : Infinity;
             const available =
               videoStart && elapsedSec >= appearAt && !votingClosed;
+            const showName =
+              videoStart && elapsedSec >= appearAt;
             const isSel     = selected === img.id;
 
             return (
@@ -399,7 +401,7 @@ function VoteGrid() {
                       className="block w-full h-36 sm:h-48 md:h-56 lg:h-64 object-cover"
                     />
                     <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-bold py-1 px-1 uppercase tracking-wider leading-tight font-['Playfair_Display']">
-                      {available ? img.name : "???"}
+                      {showName ? img.name : "???"}
                     </figcaption>
                 </figure>
               </div>
