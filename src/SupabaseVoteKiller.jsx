@@ -258,16 +258,10 @@ function VoteGrid() {
         "postgres_changes",
         { event: "*", schema: "public", table: "video_session", filter: "id=eq.1" },
         ({ new: row }) => {
-          if (row.started_at) {
-            // → round started
-            setVS(Date.parse(row.started_at));
-            setSel(null);          // forget last pick
-          } else {
-            // → admin reset – back to “grey grid / waiting …”
-            setVS(0);
-            setSel(null);
-          }
-        },
+          // NULL  -> waiting screen ···  ISO string -> new round started
+          setVS(row.started_at ? Date.parse(row.started_at) : 0);
+          setSel(null);                // optional: clear previous pick
+        }
       )
       .subscribe();
     return () => supabase.removeChannel(chan);
