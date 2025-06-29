@@ -196,7 +196,7 @@ function VoteGrid() {
   const { charTimes, clues, topics } = useScenarioData();
 
   const [user, setUser]      = useState(() => localStorage.getItem("voter_name") || "");
-  const askedRef = useRef(false); // Track if we’ve already prompted
+  const askedRef = useRef(false); // Track if we've already prompted
   const [selected, setSel]   = useState(null);
   const [videoStart, setVS]  = useState(0);          // ms epoch
   const [now, setNow]        = useState(Date.now());
@@ -328,9 +328,6 @@ function VoteGrid() {
           <span className="kbd-victorian">ALT</span>
           <span className="kbd-plus">+</span>
           <span className="kbd-victorian murder">MURDER</span>
-        </div>
-        <div className="text-xs sm:text-sm text-amber-200 font-['Crimson_Text'] italic mt-1 tracking-wide">
-          The game & film of the ISIR robotics lab
         </div>
       </div>
 
