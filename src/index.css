@@ -101,9 +101,8 @@ body {
 .suspect-selected {}
 
 .suspect-selected {
-  border: 4px solid #ffd700 !important;
-  box-shadow: 0 0 0 4px #fffbe6, 0 0 16px 4px #ffd700;
-  transition: border 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 0 6px #ffd700, 0 0 16px 8px #fffbe6 !important;
+  transition: box-shadow 0.2s;
 }
 
 /* Effet de survol pour les cadres victoriens */
