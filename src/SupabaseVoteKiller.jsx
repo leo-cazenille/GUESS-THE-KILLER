@@ -52,6 +52,8 @@ ChartJS.register(
   Legend
 );
 
+
+
 // ------------------------------------ CONFIG ----------------------------------------------------
 const ONE_SECOND   = 1_000;
 const WAIT_MINUTES = 21;
@@ -83,10 +85,29 @@ const NAMES = [
   "Freaky Franka",
   "Greta",
 ];
+
+
+// Couleurs spécifiques pour chaque personnage (style Cluedo) - The Director et Spiderman échangés
+const CHARACTER_COLORS = [
+  "#8B0000",   // 1. D. Poiré - Rouge foncé
+  "#008B8B",   // 2. Jane Blond - Bleu-vert foncé
+  "#B8860B",   // 3. D. Doubledork - Or foncé
+  "#2F4F4F",   // 4. The Director - Gris ardoise foncé
+  "#228B22",   // 5. Dr. Lafayette - Vert forêt
+  "#4B0082",   // 6. Spiderman - Indigo foncé
+  "#8B008B",   // 7. Mew the ripper - Violet foncé
+  "#8B4513",   // 8. Researcher Catnip - Marron selle
+  "#191970",   // 9. QTRobot - Bleu marine
+  "#654321",   // 10. Pepper - Marron foncé
+  "#A0522D",   // 11. Freaky Franka - Marron sienna
+  "#DAA520",   // 12. Greta - Or pâle
+];
+
 const IMAGES = NAMES.map((name, i) => ({
   id: i + 1,
   name,
   src: asset(`photos/${i + 1}.jpg`),
+  color: CHARACTER_COLORS[i],
 }));
 
 const REAL_KILLER_ID   = 5;
@@ -325,25 +346,32 @@ function VoteGrid() {
         min-h-screen w-full
         flex flex-col items-center
         px-4 pb-10
-        bg-gradient-to-b from-[#0a0f24] via-[#151e3d] to-[#3d1d65]
       "
     >
       {/* headline ───────────────────────────────────────────────────────── */}
-      <h1 className="text-center font-serif font-extrabold leading-tight mt-6 mb-10
-                     text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-white max-w-4xl">
-        And you&nbsp;
-        <span className="text-yellow-300 drop-shadow">
-          {user || "…"}
-        </span>
-        ,&nbsp;who do you think is the real killer?
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center font-['Playfair_Display'] tracking-wide text-amber-100">
+        {user ? (
+          <>
+            And you <span className="text-amber-200 font-['Crimson_Text']">{user}</span>, who do you think is the real killer?
+          </>
+        ) : (
+          "Who do you think is the real killer?"
+         )}
       </h1>
 
-      {/* tabs header – identical to before */}
+      {/* tabs header */}
       <Tabs />
 
       {/* ───────────────── TAB 1 – VOTES ───────────────── */}
       {tab === "vote" && (
-        <div className="grid grid-cols-3 gap-3 sm:gap-5 lg:gap-6">
+        <>
+        <p className="text-base sm:text-lg text-center font-['Crimson_Text'] text-amber-200 mb-6 italic">
+          The winner is the player who keeps guessing the longest.
+          <br />
+          Change your guess anytime!
+        </p>
+
+        <div className="grid grid-cols-3 gap-3 sm:gap-5 md:gap-7 lg:gap-8">
           {IMAGES.map((img) => {
             const appearAt = charTimes.has(normal(img.name))
               ? charTimes.get(normal(img.name))
@@ -354,20 +382,20 @@ function VoteGrid() {
             const isSel     = selected === img.id;
 
             return (
-              <figure
+              <div
                 key={img.id}
                 onClick={() => vote(img.id)}
-                className={`
-                  relative isolate overflow-hidden rounded-xl cursor-pointer
-                  transition-transform
+                className={`victorian-frame color-${img.id} cursor-pointer transition-all duration-300
                   ${!available ? "opacity-40 cursor-not-allowed"
                                 : isSel ? "scale-[1.06] shadow-[0_0_12px_4px_rgba(255,215,0,0.75)] animate-[pulse-gold_1.4s_ease-in-out_infinite]"
                                          : "hover:scale-[1.04]"}
                 `}
                 style={{
                   /* double frame: thin when idle, thick when selected */
-                  padding: isSel ? "6px" : "4px",
-                  border:  isSel ? "6px double transparent" : "3px double transparent",
+                  padding: "4px",                            // constant → no reflow
+                  border:  "3px double transparent",
+                  outline: isSel ? "4px solid #ffd700" : "none",
+                  outlineOffset: "-4px",
                   background: isSel
                     ? "linear-gradient(#3182ce,#3182ce) padding-box,\
                        linear-gradient(135deg,#ffd700 0%,#ffef8a 30%,#d4af37 60%,#ffd700 100%) border-box"
@@ -388,22 +416,22 @@ function VoteGrid() {
                   </span>
                 )}
 
-                <img
-                  src={img.src}
-                  alt={img.name}
-                  className="block w-full h-36 sm:h-48 md:h-56 lg:h-64 object-cover"
-                />
-
-                <figcaption className="absolute inset-x-0 bottom-0 bg-black/70 text-white
-                                        text-center font-bold tracking-widest uppercase
-                                        text-sm sm:text-base md:text-lg py-1">
-                  {available ? img.name : "???"}
-                </figcaption>
-              </figure>
+                <figure className="relative overflow-hidden rounded-sm m-0">
+                    <img
+                      src={img.src}
+                      alt={img.name}
+                      className="block w-full h-36 sm:h-48 md:h-56 lg:h-64 object-cover"
+                    />
+                    <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-bold py-1 px-1 uppercase tracking-wider leading-tight font-['Playfair_Display']">
+                      {available ? img.name : "???"}
+                    </figcaption>
+                </figure>
+              </div>
             );
 
           })}
         </div>
+        </>
       )}
 
       {/* ───────────────── TAB 2 – CLUES / TOPICS ───────────────── */}
@@ -427,10 +455,10 @@ function VoteGrid() {
                   </span>
 
                   {e.kind === "clue" ? (
-                    <span className="font-bold underline text-black text-lg">{e.text}</span>
+                    <span className="font-bold text-black text-lg">{e.text}</span>
                   ) : (
                     <span className="text-lg">
-                      <span className="font-bold text-black">{e.title}</span>
+                      <span className="underline text-black">{e.title}</span>
                       {e.desc && (
                         <span className="text-gray-800"> — {e.desc}</span>
                       )}
@@ -638,12 +666,12 @@ function VisualizationPage() {
 
       {/* sidebar */}
       <div
-        className="bg-white p-2 flex flex-col items-center gap-4 overflow-hidden"
+        className="bg-slate-800/90 backdrop-blur-sm p-2 flex flex-col items-center gap-4 overflow-hidden border-l border-slate-600"
         style={{ width: sidebarW }}
       >
         {!afterWindow ? (
           <>
-            <p className="text-2xl font-extrabold text-center text-black">
+            <p className="text-2xl font-extrabold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
               Who is the real killer? Vote at:
             </p>
 
@@ -658,7 +686,7 @@ function VisualizationPage() {
             {SHOW_SIDEBAR_HISTOGRAM ? (
               <div className="w-full flex-1 flex flex-col">
                 {/* extra spacing above the heading ↓ */}
-                <p className="text-2xl font-bold text-center text-black mt-8">
+                <p className="text-2xl font-bold text-center text-amber-100 mt-8 font-['Playfair_Display'] tracking-wide">
                   Live vote share
                 </p>
                 <div className="flex-1 overflow-y-auto">
@@ -671,37 +699,37 @@ function VisualizationPage() {
                     />
                   </div>
                 </div>
-                <p className="text-xl mt-2 text-center text-black">{total} total votes</p>
+                <p className="text-xl mt-2 text-center text-amber-200 font-['Crimson_Text']">{total} total votes</p>
               </div>
             ) : (
               <>   {/* ▼  ORIGINAL PORTRAIT LAYOUT restored */}
-                <p className="text-2xl font-bold text-center text-black">
+                <p className="text-2xl font-bold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
                   Top&nbsp;3 most voted:
                 </p>
 
                 {display.length === 0 ? (
-                  <p className="text-2xl italic mt-2 text-black">No votes yet</p>
+                  <p className="text-2xl italic mt-2 text-amber-200 font-['Crimson_Text']">No votes yet</p>
                 ) : (
                   <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-y-auto">
                     {display.map((it) => (
                       <div key={it.id} className="w-full flex flex-col items-center gap-1">
-                        <div className="relative w-[60%] aspect-[2/3]">
+                        <div className={`victorian-frame color-${it.id} w-[60%] aspect-[2/3]`}>
                           <img
                             src={it.src}
                             alt={it.name}
-                            className="w-full h-full object-cover rounded-md border"
+                            className="w-full h-full object-cover object-top rounded-sm"
                           />
-                          <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-lg font-extrabold py-1 uppercase tracking-wider">
+                          <span className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-bold py-1 px-1 uppercase tracking-wider leading-tight font-['Playfair_Display']">
                             {it.name}
                           </span>
                         </div>
-                        <p className="text-2xl font-extrabold text-black">{it.pct}%</p>
+                        <p className="text-2xl font-extrabold text-amber-100 font-['Playfair_Display']">{it.pct}%</p>
                       </div>
                     ))}
                   </div>
                 )}
 
-                <p className="text-xl text-center text-black mb-2">
+                <p className="text-xl text-center text-amber-200 mb-2 font-['Crimson_Text']">
                   {total} total votes
                 </p>
               </>
@@ -710,22 +738,22 @@ function VisualizationPage() {
           </>
         ) : (
           <>
-            <p className="text-2xl font-extrabold text-center text-black">
+            <p className="text-2xl font-extrabold text-center text-amber-100 font-['Playfair_Display'] tracking-wide">
               Leaderboard – who guessed the killer the longest?
             </p>
             {leader.length === 0 ? (
-              <p className="text-xl italic text-black">No scores yet</p>
+              <p className="text-xl italic text-amber-200 font-['Crimson_Text']">No scores yet</p>
             ) : (
               <ol className="flex-1 w-full overflow-y-auto flex flex-col gap-2">
                 {leader.map((s, idx) => (
                   <li
                     key={s.user_name}
-                    className="flex justify-between px-3 py-2 bg-gray-100 rounded-md text-black"
+                    className="flex justify-between px-3 py-2 bg-slate-700/50 rounded-md text-amber-100 border border-slate-600"
                   >
-                    <span className="font-bold text-xl">
+                    <span className="font-bold text-xl font-['Crimson_Text']">
                       {idx + 1}. {s.user_name}
                     </span>
-                    <span className="font-mono text-xl">
+                    <span className="font-mono text-xl text-amber-200">
                       {s.score.toFixed(1)}%
                     </span>
                   </li>
@@ -862,7 +890,7 @@ function ResultsPage() {
   // login form
   if (!logged) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -871,23 +899,23 @@ function ResultsPage() {
               sessionStorage.setItem("isAdmin", "true");
             } else alert("Invalid credentials");
           }}
-          className="bg-white p-6 rounded-md shadow-md flex flex-col gap-4 w-80"
+          className="bg-slate-800/90 backdrop-blur-sm p-6 rounded-md shadow-2xl border border-slate-600 flex flex-col gap-4 w-80"
         >
-          <h1 className="text-3xl font-bold text-center">Admin</h1>
+          <h1 className="text-3xl font-bold text-center font-['Playfair_Display'] tracking-wide text-amber-100">Admin</h1>
           <input
-            className="border p-2"
+            className="border border-slate-600 p-2 bg-slate-700 text-amber-100 placeholder-amber-300/50 rounded"
             placeholder="Login"
             value={creds.login}
             onChange={(e) => setCreds({ ...creds, login: e.target.value })}
           />
           <input
-            className="border p-2"
+            className="border border-slate-600 p-2 bg-slate-700 text-amber-100 placeholder-amber-300/50 rounded"
             type="password"
             placeholder="Password"
             value={creds.password}
             onChange={(e) => setCreds({ ...creds, password: e.target.value })}
           />
-          <button className="bg-blue-600 text-white py-2 rounded-md text-xl">Enter</button>
+          <button className="bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-md text-xl transition-colors">Enter</button>
         </form>
       </div>
     );
@@ -942,26 +970,26 @@ function ResultsPage() {
   return (
     <div className="min-h-screen flex flex-col gap-8 p-6">
       <header className="flex flex-wrap justify-between items-center gap-4">
-        <h1 className="text-4xl font-bold">Vote Results</h1>
+        <h1 className="text-4xl font-bold font-['Playfair_Display'] tracking-wide text-amber-100">Vote Results</h1>
         <div className="flex flex-wrap gap-3">
-          <button onClick={exportHist}   className="bg-green-600 text-white px-4 py-2 rounded-md">
+          <button onClick={exportHist}   className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors">
             Export histogram CSV
           </button>
-          <button onClick={exportSeries} className="bg-green-600 text-white px-4 py-2 rounded-md">
+          <button onClick={exportSeries} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors">
             Export series CSV
           </button>
-          <button onClick={resetVotes}   className="bg-red-600   text-white px-4 py-2 rounded-md">
+          <button onClick={resetVotes}   className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors">
             Reset votes
           </button>
         </div>
       </header>
 
-      <p className="text-2xl">{total} total votes</p>
+      <p className="text-2xl font-['Crimson_Text'] text-amber-200">{total} total votes</p>
 
       {/* histogram */}
       <div className="w-full flex justify-center overflow-x-auto">
         <div
-          className="w-full lg:w-4/5 bg-white p-4 rounded-md shadow-md"
+          className="w-full lg:w-4/5 bg-slate-800/90 backdrop-blur-sm p-4 rounded-md shadow-2xl border border-slate-600"
           style={{ minHeight: 800, minWidth: 1200 }}
         >
           <Bar data={barData} options={barOpts} height={800} width={1200} />
@@ -969,16 +997,16 @@ function ResultsPage() {
       </div>
 
       {/* line plot */}
-      <h2 className="text-3xl font-bold">Vote evolution over time</h2>
+      <h2 className="text-3xl font-bold font-['Playfair_Display'] tracking-wide text-amber-100">Vote evolution over time</h2>
       <div
-        className="w-full bg-white p-4 rounded-md shadow-md"
+        className="w-full bg-slate-800/90 backdrop-blur-sm p-4 rounded-md shadow-2xl border border-slate-600"
         style={{ minHeight: 800, minWidth: 1200 }}
       >
         <Line data={lineData} options={lineOpts} height={800} width={1200} />
       </div>
 
       <div className="text-center mt-10">
-        <Link to="/" className="text-blue-600 underline text-2xl">
+        <Link to="/" className="text-amber-300 hover:text-amber-100 underline text-2xl font-['Crimson_Text'] transition-colors">
           Back to voting
         </Link>
       </div>

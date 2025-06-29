@@ -1,21 +1,129 @@
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  font-family: 'Crimson Text', serif;
+  line-height: 1.6;
   font-weight: 400;
 
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 25%, #0f3460 50%, #533483 75%, #2d1b69 100%);
+  background-attachment: fixed;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 25%, #0f3460 50%, #533483 75%, #2d1b69 100%);
+  background-attachment: fixed;
+}
+
+/* Cadre victorien fin et élégant */
+.victorian-frame {
+  position: relative;
+  background: linear-gradient(145deg, #d4af37, #b8860b, #daa520);
+  padding: 4px;
+  border-radius: 2px;
+  box-shadow: 
+    0 0 0 1px #8b4513,
+    0 0 0 2px #d4af37,
+    0 0 0 3px #8b4513,
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+.victorian-frame::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  background: linear-gradient(145deg, #f4e4bc, #e6d7a8);
+  border-radius: 1px;
+  z-index: -1;
+}
+
+.victorian-frame::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  background: linear-gradient(145deg, #8b4513, #654321);
+  border-radius: 2px;
+  z-index: -2;
+}
+
+/* Cadres colorés pour chaque personnage - couleurs ternes et sombres */
+.victorian-frame.color-1 { background: linear-gradient(145deg, #8B0000, #A52A2A, #CD5C5C); }
+.victorian-frame.color-2 { background: linear-gradient(145deg, #2F4F4F, #696969, #808080); }
+.victorian-frame.color-3 { background: linear-gradient(145deg, #B8860B, #DAA520, #F0E68C); }
+.victorian-frame.color-4 { background: linear-gradient(145deg, #2F4F4F, #696969, #808080); box-shadow: 0 0 0 1px #2F4F4F, 0 0 0 2px #696969, 0 0 0 3px #2F4F4F, 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.3); }
+.victorian-frame.color-5 { background: linear-gradient(145deg, #191970, #4169E1, #87CEEB); }
+.victorian-frame.color-6 { background: linear-gradient(145deg, #228B22, #32CD32, #90EE90); }
+.victorian-frame.color-7 { background: linear-gradient(145deg, #4B0082, #9370DB, #DDA0DD); }
+.victorian-frame.color-8 { background: linear-gradient(145deg, #8B0000, #A52A2A, #CD5C5C); }
+.victorian-frame.color-9 { background: linear-gradient(145deg, #008B8B, #20B2AA, #AFEEEE); }
+.victorian-frame.color-10 { background: linear-gradient(145deg, #8B4513, #A0522D, #CD853F); }
+.victorian-frame.color-11 { background: linear-gradient(145deg, #654321, #8B4513, #A0522D); }
+.victorian-frame.color-12 { background: linear-gradient(145deg, #A0522D, #CD853F, #DEB887); }
+
+/* Bordures colorées pour chaque personnage - couleurs ternes */
+.victorian-frame.color-1 { box-shadow: 0 0 0 1px #8B0000, 0 0 0 2px #A52A2A, 0 0 0 3px #8B0000, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-2 { box-shadow: 0 0 0 1px #2F4F4F, 0 0 0 2px #696969, 0 0 0 3px #2F4F4F, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-3 { box-shadow: 0 0 0 1px #B8860B, 0 0 0 2px #DAA520, 0 0 0 3px #B8860B, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-4 { box-shadow: 0 0 0 1px #2F4F4F, 0 0 0 2px #696969, 0 0 0 3px #2F4F4F, 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.3); }
+.victorian-frame.color-5 { box-shadow: 0 0 0 1px #191970, 0 0 0 2px #4169E1, 0 0 0 3px #191970, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-6 { box-shadow: 0 0 0 1px #228B22, 0 0 0 2px #32CD32, 0 0 0 3px #228B22, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-7 { box-shadow: 0 0 0 1px #4B0082, 0 0 0 2px #9370DB, 0 0 0 3px #4B0082, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-8 { box-shadow: 0 0 0 1px #8B0000, 0 0 0 2px #A52A2A, 0 0 0 3px #8B0000, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-9 { box-shadow: 0 0 0 1px #008B8B, 0 0 0 2px #20B2AA, 0 0 0 3px #008B8B, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-10 { box-shadow: 0 0 0 1px #8B4513, 0 0 0 2px #A0522D, 0 0 0 3px #8B4513, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-11 { box-shadow: 0 0 0 1px #654321, 0 0 0 2px #8B4513, 0 0 0 3px #654321, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+.victorian-frame.color-12 { box-shadow: 0 0 0 1px #A0522D, 0 0 0 2px #CD853F, 0 0 0 3px #A0522D, 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3); }
+
+/* Empêche la purge Tailwind de la classe dynamique */
+.suspect-selected {}
+
+.suspect-selected {
+  background: #fff !important;
+  box-shadow: 0 0 0 3px #fff, 0 4px 12px rgba(0,0,0,0.25) !important;
+  border: 2.5px solid #fff !important;
+  transition: background 0.3s, box-shadow 0.3s, border 0.3s;
+}
+
+/* Effet de survol pour les cadres victoriens */
+.victorian-frame:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 
+    0 0 0 1px #8b4513,
+    0 0 0 2px #d4af37,
+    0 0 0 3px #8b4513,
+    0 6px 12px rgba(0, 0, 0, 0.4),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+}
+
+/* Effet de pulsation pour les suspects non sélectionnés */
+.suspect-pulse {
+  opacity: 0.98;
+  filter: brightness(0.95);
+}
+
 
 a {
   font-weight: 500;
@@ -26,17 +134,19 @@ a:hover {
   color: #535bf2;
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
 
 h1 {
+  font-family: 'Playfair Display', serif;
   font-size: 3.2em;
   line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+h2, h3, h4, h5, h6 {
+  font-family: 'Playfair Display', serif;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 button {
@@ -61,8 +171,13 @@ button:focus-visible {
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
-    background-color: #ffffff;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 25%, #dee2e6 50%, #ced4da 75%, #adb5bd 100%);
+    background-attachment: fixed;
   }
+  body {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 25%, #dee2e6 50%, #ced4da 75%, #adb5bd 100%);
+    background-attachment: fixed;
+   }
   a:hover {
     color: #747bff;
   }
