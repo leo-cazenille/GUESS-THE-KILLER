@@ -212,7 +212,7 @@ function VoteGrid() {
   // ask name once ------------------------------------------------------------
   useEffect(() => {
     if (!user) {
-      const n = prompt("Enter your name to vote:")?.trim();
+      const n = prompt("Enter your name to vote (unique to avoid duplicates):")?.trim();
       if (n) {
         setUser(n);
         localStorage.setItem("voter_name", n);
