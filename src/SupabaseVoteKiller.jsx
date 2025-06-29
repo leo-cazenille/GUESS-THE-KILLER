@@ -336,13 +336,21 @@ function VoteGrid() {
 
 // -------------------------------- RENDER ----------------------------------
   return (
-    <div
-      className="
-        min-h-screen w-full
-        flex flex-col items-center
-        px-4 pb-10
-      "
-    >
+    <div className="min-h-screen w-full flex flex-col items-center px-4 pb-10">
+      {/* Titre du jeu */}
+      <div className="flex flex-col items-center mt-4 mb-6">
+        <div className="flex items-center gap-2">
+          <span className="kbd-victorian">CTRL</span>
+          <span className="kbd-plus">+</span>
+          <span className="kbd-victorian">ALT</span>
+          <span className="kbd-plus">+</span>
+          <span className="kbd-victorian murder">MURDER</span>
+        </div>
+        <div className="text-xs sm:text-sm text-amber-200 font-['Crimson_Text'] italic mt-1 tracking-wide">
+          The game & film of the ISIR robotics lab
+        </div>
+      </div>
+
       {/* headline ───────────────────────────────────────────────────────── */}
       <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center font-['Playfair_Display'] tracking-wide text-amber-100">
         {user ? (

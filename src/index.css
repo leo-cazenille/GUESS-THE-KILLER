@@ -211,3 +211,41 @@ button:focus-visible {
   opacity: 1;
   text-decoration: underline;
 }
+
+/* Touche de clavier style victorien/Cluedo */
+.kbd-victorian {
+  display: inline-block;
+  min-width: 3.2em;
+  padding: 0.32em 0.9em;
+  margin: 0 0.1em;
+  background: linear-gradient(145deg, #f8f6f2 70%, #d4af37 100%);
+  color: #2d1b2d;
+  border: 2px solid #d4af37;
+  border-radius: 0.5em;
+  box-shadow: 0 2px 8px #0002, 0 1px 0 #fff8 inset;
+  font-family: 'Fira Mono', 'Menlo', 'Consolas', 'Crimson Text', serif;
+  font-size: 1.25em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #fff8;
+  text-transform: uppercase;
+  transition: box-shadow 0.2s, border 0.2s;
+}
+.kbd-victorian.murder {
+  background: linear-gradient(145deg, #fffbe6 60%, #b71c1c 100%);
+  color: #b71c1c;
+  border-color: #b71c1c;
+  min-width: 5.2em;
+  font-size: 1.3em;
+  letter-spacing: 0.12em;
+  box-shadow: 0 2px 12px #b71c1c33, 0 1px 0 #fff8 inset;
+}
+.kbd-plus {
+  color: #ffd700;
+  font-size: 1.5em;
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  margin: 0 0.2em;
+  vertical-align: middle;
+  text-shadow: 0 1px 2px #fff8, 0 0 4px #ffd70088;
+}
