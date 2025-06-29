@@ -318,21 +318,32 @@ function VoteGrid() {
     </div>
   );
 
-  // -------------------------------- RENDER ----------------------------------
+// -------------------------------- RENDER ----------------------------------
   return (
-    <div className="p-4 max-w-screen-2xl mx-auto">
-      <h1 className="text-4xl font-bold mb-4 text-center">
-        Who do you think is the real killer?
-        {user && (
-          <span className="block text-lg font-medium mt-1">[username: {user}]</span>
-        )}
+    <div
+      className="
+        min-h-screen w-full
+        flex flex-col items-center
+        px-4 pb-10
+        bg-gradient-to-b from-[#0a0f24] via-[#151e3d] to-[#3d1d65]
+      "
+    >
+      {/* headline ───────────────────────────────────────────────────────── */}
+      <h1 className="text-center font-serif font-extrabold leading-tight mt-6 mb-10
+                     text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-white max-w-4xl">
+        And you&nbsp;
+        <span className="text-yellow-300 drop-shadow">
+          {user || "…"}
+        </span>
+        ,&nbsp;who do you think is the real killer?
       </h1>
 
+      {/* tabs header – identical to before */}
       <Tabs />
 
       {/* ───────────────── TAB 1 – VOTES ───────────────── */}
       {tab === "vote" && (
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
+        <div className="grid grid-cols-3 gap-3 sm:gap-5 lg:gap-6">
           {IMAGES.map((img) => {
             const appearAt = charTimes.has(normal(img.name))
               ? charTimes.get(normal(img.name))
@@ -340,71 +351,97 @@ function VoteGrid() {
             const available =
               videoStart && elapsedSec >= appearAt && !votingClosed;
             const greyed = !available;
+            const isSel     = selected === img.id;
 
             return (
               <figure
                 key={img.id}
                 onClick={() => vote(img.id)}
-                className={`relative rounded-lg overflow-hidden border-2 md:border-4
-                  transition-shadow select-none
-                  ${selected === img.id ? "border-blue-500 shadow-lg" : "border-transparent"}
-                  ${greyed ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
+                className={`
+                  relative isolate overflow-hidden rounded-xl cursor-pointer
+                  transition-transform
+                  ${!available ? "opacity-40 cursor-not-allowed"
+                                : isSel ? "scale-[1.06] shadow-[0_0_12px_4px_rgba(255,215,0,0.75)] animate-[pulse-gold_1.4s_ease-in-out_infinite]"
+                                         : "hover:scale-[1.04]"}
                 `}
+                style={{
+                  /* double frame: thin when idle, thick when selected */
+                  padding: isSel ? "6px" : "4px",
+                  border:  isSel ? "6px double transparent" : "3px double transparent",
+                  background: isSel
+                    ? "linear-gradient(#3182ce,#3182ce) padding-box,\
+                       linear-gradient(135deg,#ffd700 0%,#ffef8a 30%,#d4af37 60%,#ffd700 100%) border-box"
+                    : "linear-gradient(#1e1e1e,#1e1e1e) padding-box,\
+                       linear-gradient(135deg,#ffd700 0%,#ffef8a 30%,#d4af37 60%,#ffd700 100%) border-box",
+                }}
               >
+                {/* check-mark badge */}
+                {isSel && (
+                  <span className="absolute top-1.5 right-1.5 bg-yellow-300 text-black
+                                   rounded-full p-1 shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" strokeWidth={3}
+                         className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round"
+                            d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                )}
+
                 <img
                   src={img.src}
                   alt={img.name}
-                  className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover"
+                  className="block w-full h-36 sm:h-48 md:h-56 lg:h-64 object-cover"
                 />
-                <figcaption
-                  className="absolute bottom-0 left-0 w-full bg-black/70 text-white
-                             text-center text-lg sm:text-xl font-bold py-1 uppercase tracking-wider"
-                >
+
+                <figcaption className="absolute inset-x-0 bottom-0 bg-black/70 text-white
+                                        text-center font-bold tracking-widest uppercase
+                                        text-sm sm:text-base md:text-lg py-1">
                   {available ? img.name : "???"}
                 </figcaption>
               </figure>
             );
+
           })}
         </div>
       )}
 
       {/* ───────────────── TAB 2 – CLUES / TOPICS ───────────────── */}
-    {tab === "info" && (
-      <div className="mt-2 flex flex-col gap-4 items-center bg-white p-4 rounded-lg shadow">
-        {!videoStart ? (
-          <p className="text-2xl italic text-gray-700">
-            Waiting for the movie to start…
-          </p>
-        ) : visibleItems.length === 0 ? (
-          <p className="text-xl italic text-gray-600">No clues for now.</p>
-        ) : (
-          <ul className="w-full max-w-3xl space-y-3">
-            {visibleItems.map((e, i) => (
-              <li
-                key={i}
-                /* 2-column grid: fixed 4 rem for the time stamp, rest stretches */
-                className="grid grid-cols-[4rem_1fr] gap-4"
-              >
-                <span className="font-mono text-lg text-right text-black">{fmtMMSS(e.time)}</span>
-
-                {/* clue vs. topic */}
-                {e.kind === "clue" ? (
-                  <span className="font-bold underline text-black text-lg">{e.text}</span>
-                ) : (
-                  <span className="text-lg">
-                    <span className="font-bold text-black">{e.title}</span>
-                    {e.desc && (
-                      <span className="text-gray-800"> — {e.desc}</span>
-                    )}
+      {tab === "info" && (
+        <div className="mt-4 flex flex-col gap-4 items-center bg-white/90 p-6 rounded-xl shadow-lg w-full max-w-3xl">
+          {!videoStart ? (
+            <p className="text-2xl italic text-gray-700">
+              Waiting for the movie to start…
+            </p>
+          ) : visibleItems.length === 0 ? (
+            <p className="text-xl italic text-gray-600">No clues for now.</p>
+          ) : (
+            <ul className="w-full space-y-3">
+              {visibleItems.map((e, i) => (
+                <li
+                  key={i}
+                  className="grid grid-cols-[4rem_1fr] gap-4"
+                >
+                  <span className="font-mono text-lg text-right text-black">
+                    {fmtMMSS(e.time)}
                   </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    )}
 
+                  {e.kind === "clue" ? (
+                    <span className="font-bold underline text-black text-lg">{e.text}</span>
+                  ) : (
+                    <span className="text-lg">
+                      <span className="font-bold text-black">{e.title}</span>
+                      {e.desc && (
+                        <span className="text-gray-800"> — {e.desc}</span>
+                      )}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
