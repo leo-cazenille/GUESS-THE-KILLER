@@ -110,10 +110,10 @@ body {
     0 0 0 2px #ffd700,
     0 0 0 4px #fffbe6,
     0 0 0 6px #ffd700,
-    0 12px 24px rgba(0, 0, 0, 0.4);
+    0 12px 24px rgba(0, 0, 0, 0.4) !important;
   border: 2.5px solid #fffbe6 !important;
-  transform: scale(1.04);
-  filter: brightness(1.6) contrast(1.2) saturate(1.3);
+  transform: scale(1.04) !important;
+  filter: brightness(1.6) contrast(1.2) saturate(1.3) !important;
 }
 
 /* Effet de survol pour les cadres victoriens */
