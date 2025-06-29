@@ -1,14 +1,11 @@
 // SupabaseVoteKiller.jsx
-// -------------------------------------------------------------------------------------------------
-// Voting demo – React + Vite + Supabase
+// -----------------------------------------------------------------------------------------------
+// Voting demo – React + Vite + Supabase  (patched 2025-06-29)
 //
-// 2025-06-27  • Global "video start" lives in table `video_session` so every device
-//              sees it (phones ≠ projector).  Each phone upserts its score (0-100 %)
-//              to table `scores` after the 60-s window.  Leaderboard shows those
-//              scores.  Reset clears votes + scores + session.
 //
-//              WAIT_SECONDS is the single timing knob (default 60 s).
-// -------------------------------------------------------------------------------------------------
+// Everything else (21-minute window, two-tab layout, CSV loads, etc.) is unchanged.
+//
+// -----------------------------------------------------------------------------------------------
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -20,6 +17,7 @@ import {
   Link,
 } from "react-router-dom";
 import ReactPlayer from "react-player/youtube";
+import Papa from "papaparse";
 import { QRCodeCanvas as QRCode } from "qrcode.react";
 
 import {
@@ -48,34 +46,31 @@ ChartJS.register(
   Legend
 );
 
-// ------------------------------------ CONFIG -----------------------------------------------------
+
+
+// ------------------------------------ CONFIG ----------------------------------------------------
 const ONE_SECOND   = 1_000;
-const WAIT_SECONDS = 60;                      // 🔧 change once to alter the window everywhere
+const WAIT_MINUTES = 21;
+const WAIT_SECONDS = WAIT_MINUTES * 60;
 const WAIT_MS      = WAIT_SECONDS * ONE_SECOND;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Feature flag — what to display in the Visualization sidebar *before*
-//  the 60-second window elapses:
-//      false  → current behaviour: QR code + Top-3 suspects with portraits
-//      true   → horizontal histogram of vote % for all 12 suspects
-// ─────────────────────────────────────────────────────────────────────────────
 const SHOW_SIDEBAR_HISTOGRAM = true;
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
-window.supabase = supabase; // DEBUG XXX
+window.supabase = supabase; // dev helper
 
-// suspects ------------------------------------------------------------------
+// Suspects ------------------------------------------------------------------
 const NAMES = [
   "D. Poiré",
   "Jane Blond",
   "D. Doubledork",
   "The Director",
-  "Dr. Lafayette", // ID 5 – real killer
+  "Dr. Lafayette",     // id 5 – killer
   "Spiderman",
-  "Mew the ripper",
+  "Mew the Ripper",
   "Researcher Catnip",
   "QTRobot",
   "Pepper",
@@ -110,31 +105,114 @@ const IMAGES = NAMES.map((name, i) => ({
 const REAL_KILLER_ID   = 5;
 const REAL_KILLER_NAME = NAMES[REAL_KILLER_ID - 1];
 
-// ---------------------------------- SHARED HELPERS ----------------------------------------------
-/** Wipe all tables & send "reset" signal */
+// ---------------------------------- CSV HELPERS -------------------------------------------------
+const normal = (s = "") =>
+  s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")            // split é → e + ́
+    .replace(/[\u0300-\u036f]/g, "") // drop diacritics
+    .replace(/[^\w\s.]/g, "");   // remove stray � or other symbols
+
+async function loadCsv(relPath) {
+  const res = await fetch(asset(relPath));
+  const buf = await res.arrayBuffer();
+  let txt   = new TextDecoder("utf-8").decode(buf);
+  if (txt.includes("�")) txt = new TextDecoder("iso-8859-1").decode(buf); // fallback
+  return new Promise((res) =>
+    Papa.parse(txt, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (out) => res(out.data),
+    })
+  );
+}
+
+const fmtMMSS = (sec) =>
+  `${Math.floor(sec / 60)}:${Math.floor(sec % 60).toString().padStart(2, "0")}`;
+
+/** One-time scenario data (characters / clues / topics) */
+function useScenarioData() {
+  const [charTimes, setCharTimes] = useState(new Map()); // Map(normalName → time)
+  const [clues, setClues]         = useState([]);        // [{time, text}]
+  const [topics, setTopics]       = useState([]);        // [{time, title}]
+
+  useEffect(() => {
+    (async () => {
+      const [charRows, clueRows, topicRows] = await Promise.all([
+        loadCsv("characters.csv"),
+        loadCsv("clues.csv"),
+        loadCsv("topics.csv"),
+      ]);
+
+      // characters.csv
+      const cMap = new Map();
+      charRows.forEach((r) => {
+        const n = normal(r.character ?? r.Character ?? "");
+        const t = parseFloat(r.time ?? r.Time ?? 0);
+        if (n) cMap.set(n, t);
+      });
+      setCharTimes(cMap);
+
+      // clues.csv
+      setClues(
+        clueRows
+          .map((r) => ({
+            time: parseFloat(r.time ?? r.Time ?? 0),
+            text: (r.clue ?? r.Clue ?? "").trim(),
+          }))
+          .filter((r) => r.text)
+      );
+
+      // topics.csv
+      setTopics(
+        topicRows
+          .map((r) => ({
+            time: parseFloat(r.time ?? r.Time ?? 0),
+            title: (r.title ?? r.Title ?? "").trim(),
+            desc: (r.acide_topic ?? r.Acide_topic ?? "").trim(),
+          }))
+          .filter((r) => r.title)
+      );
+    })();
+  }, []);
+
+  return { charTimes, clues, topics };
+}
+
+// ---------------------------------- SHARED RESET (unchanged) ------------------------------------
 async function resetAllAndNotify() {
   await Promise.all([
     supabase.from("votes").delete().gt("image_id", 0),
     supabase.from("scores").delete().gt("score", -1),
     supabase.from("video_session").upsert({ id: 1, started_at: null }),
   ]);
-  localStorage.setItem("votes_reset", Date.now().toString()); // keeps existing listeners
+  localStorage.setItem("votes_reset", Date.now().toString());
 }
 
-// ----------------------------- VOTE GRID --------------------------------------------------------
+// ------------------------------------------ VOTE GRID -------------------------------------------
 function VoteGrid() {
-  const [user, setUser]   = useState(() => localStorage.getItem("voter_name") || "");
-  const [selected, setSel] = useState(null);
+  const { charTimes, clues, topics } = useScenarioData();
 
-  // ───────────────── timing / scoring ─────────────────
-  const [videoStart, setVS]  = useState(0);     // ms since epoch
-  const killerMsRef          = useRef(0);       // time spent on killer so far
-  const lastTickRef          = useRef(Date.now());
+  const [user, setUser]      = useState(() => localStorage.getItem("voter_name") || "");
+  const [selected, setSel]   = useState(null);
+  const [videoStart, setVS]  = useState(0);          // ms epoch
+  const [now, setNow]        = useState(Date.now());
+  const [tab, setTab]        = useState("vote");     // "vote" | "info"
+
+  // clock --------------------------------------------------------------------
+  useEffect(() => {
+    if (!videoStart) return;
+    const id = setInterval(() => setNow(Date.now()), ONE_SECOND);
+    return () => clearInterval(id);
+  }, [videoStart]);
+
+  const elapsedSec = videoStart ? (now - videoStart) / 1000 : 0;
 
   // ask name once ------------------------------------------------------------
   useEffect(() => {
     if (!user) {
-      const n = window.prompt("Enter your name to vote:")?.trim();
+      const n = prompt("Enter your name to vote:")?.trim();
       if (n) {
         setUser(n);
         localStorage.setItem("voter_name", n);
@@ -155,10 +233,9 @@ function VoteGrid() {
     })();
   }, [user]);
 
-  // poll `video_session` once a second until we get the start timestamp ------
+  // poll video_session until started_at --------------------------------------
   useEffect(() => {
-    if (videoStart) return;          // already have it
-
+    if (videoStart) return;
     const poll = async () => {
       const { data } = await supabase
         .from("video_session")
@@ -172,51 +249,50 @@ function VoteGrid() {
     return () => clearInterval(id);
   }, [videoStart]);
 
-  // ----------------------- CONTINUOUS SCORING & UPSERT ----------------------
-  useEffect(() => {
-    if (!videoStart) return;         // nothing to do until movie has started
+  // continuous scoring -------------------------------------------------------
+  const killerMsRef = useRef(0);
+  const lastTickRef = useRef(Date.now());
 
-    // helper that does the accounting + writes the row
+  useEffect(() => {
+    if (!videoStart) return;
+
     const pushScore = async () => {
-      const now  = Date.now();
-      const dt   = now - lastTickRef.current;
+      const now = Date.now();
+      const dt  = now - lastTickRef.current;
       lastTickRef.current = now;
 
-      if (selected === REAL_KILLER_ID) {
-        killerMsRef.current += dt;
-      }
+      if (selected === REAL_KILLER_ID) killerMsRef.current += dt;
 
-      // percentage relative to the full WAIT_MS window
       const pct = Math.min(100, (killerMsRef.current / WAIT_MS) * 100).toFixed(1);
-
-      // send to Supabase (upsert so we overwrite our own row)
-      const { error } = await supabase
-        .from("scores")
-        .upsert(
-          { user_name: user || "(anonymous)", score: Number(pct) },
-          { onConflict: "user_name" }
-        );
-      if (error) console.error("Score upsert failed →", error);
+      await supabase.from("scores").upsert(
+        { user_name: user || "(anonymous)", score: Number(pct) },
+        { onConflict: "user_name" }
+      );
     };
 
-    // push immediately (so a short-lived tab writes at least once)
     pushScore();
-
-    // then every 3 s until the full window elapses
-    const SEND_EVERY = 3_000;              // 3 s
     const id = setInterval(() => {
-      if (Date.now() - videoStart >= WAIT_MS) {
-        clearInterval(id);                 // finished the 60-s window
-      }
+      if (Date.now() - videoStart >= WAIT_MS) clearInterval(id);
       pushScore();
-    }, SEND_EVERY);
+    }, 3_000);
 
-    return () => clearInterval(id);        // clean-up on tab close / nav away
+    return () => clearInterval(id);
   }, [videoStart, selected, user]);
 
   // vote handler -------------------------------------------------------------
   const vote = async (id) => {
-    if (!user || votingClosed) return;
+    if (!videoStart) return; // no votes before movie starts
+
+    const img = IMAGES.find((i) => i.id === id);
+    if (!img) return;
+
+    const appearAt = charTimes.has(normal(img.name))
+      ? charTimes.get(normal(img.name))
+      : Infinity;
+    const available = elapsedSec >= appearAt;
+
+    if (Date.now() - videoStart >= WAIT_MS || !available) return;
+
     setSel(id);
     await supabase.from("votes").upsert(
       { user_name: user, image_id: id },
@@ -224,12 +300,47 @@ function VoteGrid() {
     );
   };
 
-  // Is the 60-second window already over?
   const votingClosed = videoStart && Date.now() - videoStart >= WAIT_MS;
 
-  // ----------------------------- UI -----------------------------------------
+  // ---------------------------- Memoised visible clues / topics -------------
+  const visibleItems = useMemo(() => {
+    const combined = [
+      ...clues.map((c) => ({ ...c, kind: "clue" })),
+      ...topics.map((t) => ({ ...t, kind: "topic" })),
+    ].sort((a, b) => a.time - b.time);
+    return combined.filter((e) => elapsedSec >= e.time);
+  }, [elapsedSec, clues, topics]);
+
+  // ---------------------------- Tabs header ---------------------------------
+  const Tabs = () => (
+    <div className="flex justify-center mb-6">
+      {[
+        ["vote", "Votes"],
+        ["info", "Clues / Topics"],
+      ].map(([k, label]) => (
+        <button
+          key={k}
+          onClick={() => setTab(k)}
+          className={`px-4 py-2 rounded-t-lg text-xl font-semibold
+            ${tab === k ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}
+            transition-colors`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+// -------------------------------- RENDER ----------------------------------
   return (
-    <div className="p-4 max-w-screen-2xl mx-auto">
+    <div
+      className="
+        min-h-screen w-full
+        flex flex-col items-center
+        px-4 pb-10
+      "
+    >
+      {/* headline ───────────────────────────────────────────────────────── */}
       <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center font-['Playfair_Display'] tracking-wide text-amber-100">
         {user ? (
           <>
@@ -237,43 +348,127 @@ function VoteGrid() {
           </>
         ) : (
           "Who do you think is the real killer?"
-        )}
+         )}
       </h1>
       
-      <p className="text-base sm:text-lg text-center font-['Crimson_Text'] text-amber-200 mb-6 italic">
-        The winner is the player who keeps guessing the longest.
-        <br />
-        Change your guess anytime!
-      </p>
+      {/* tabs header */}
+      <Tabs />
 
-      <div className="grid grid-cols-3 gap-3 sm:gap-5 md:gap-7 lg:gap-8">
-        {IMAGES.map((img) => (
-          <div
-            key={img.id}
-            onClick={() => vote(img.id)}
-            className={`victorian-frame color-${img.id} cursor-pointer transition-all duration-300 ${
-              selected === img.id ? "suspect-selected" : "suspect-pulse"
-            } ${votingClosed ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <figure className="relative overflow-hidden rounded-sm m-0">
-              <img
-                src={img.src}
-                alt={img.name}
-                className="w-full h-32 sm:h-40 md:h-52 lg:h-64 xl:h-72 object-cover object-top"
-              />
-              <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-bold py-1 px-1 uppercase tracking-wider leading-tight font-['Playfair_Display']">
-                {img.name}
-              </figcaption>
-            </figure>
-          </div>
-        ))}
-      </div>
+      {/* ───────────────── TAB 1 – VOTES ───────────────── */}
+      {tab === "vote" && (
+        <>
+        <p className="text-base sm:text-lg text-center font-['Crimson_Text'] text-amber-200 mb-6 italic">
+          The winner is the player who keeps guessing the longest.
+          <br />
+          Change your guess anytime!
+        </p>
+
+        <div className="grid grid-cols-3 gap-3 sm:gap-5 md:gap-7 lg:gap-8">
+          {IMAGES.map((img) => {
+            const appearAt = charTimes.has(normal(img.name))
+              ? charTimes.get(normal(img.name))
+              : Infinity;
+            const available =
+              videoStart && elapsedSec >= appearAt && !votingClosed;
+            const greyed = !available;
+            const isSel     = selected === img.id;
+
+            return (
+              <div
+                key={img.id}
+                onClick={() => vote(img.id)}
+                className={`victorian-frame color-${img.id} cursor-pointer transition-all duration-300
+                  ${!available ? "opacity-40 cursor-not-allowed"
+                                : isSel ? "scale-[1.06] shadow-[0_0_12px_4px_rgba(255,215,0,0.75)] animate-[pulse-gold_1.4s_ease-in-out_infinite]"
+                                         : "hover:scale-[1.04]"}
+                `}
+                style={{
+                  /* double frame: thin when idle, thick when selected */
+                  padding: "4px",                            // constant → no reflow
+                  border:  "3px double transparent",
+                  outline: isSel ? "4px solid #ffd700" : "none",
+                  outlineOffset: "-4px",
+                  background: isSel
+                    ? "linear-gradient(#3182ce,#3182ce) padding-box,\
+                       linear-gradient(135deg,#ffd700 0%,#ffef8a 30%,#d4af37 60%,#ffd700 100%) border-box"
+                    : "linear-gradient(#1e1e1e,#1e1e1e) padding-box,\
+                       linear-gradient(135deg,#ffd700 0%,#ffef8a 30%,#d4af37 60%,#ffd700 100%) border-box",
+                }}
+              >
+                {/* check-mark badge */}
+                {isSel && (
+                  <span className="absolute top-1.5 right-1.5 bg-yellow-300 text-black
+                                   rounded-full p-1 shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" strokeWidth={3}
+                         className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round"
+                            d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                )}
+
+                <figure className="relative overflow-hidden rounded-sm m-0">
+                    <img
+                      src={img.src}
+                      alt={img.name}
+                      className="block w-full h-36 sm:h-48 md:h-56 lg:h-64 object-cover"
+                    />
+                    <figcaption className="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-bold py-1 px-1 uppercase tracking-wider leading-tight font-['Playfair_Display']">
+                      {available ? img.name : "???"}
+                    </figcaption>
+                </figure>
+              </div>
+            );
+
+          })}
+        </div>
+        </>
+      )}
+
+      {/* ───────────────── TAB 2 – CLUES / TOPICS ───────────────── */}
+      {tab === "info" && (
+        <div className="mt-4 flex flex-col gap-4 items-center bg-white/90 p-6 rounded-xl shadow-lg w-full max-w-3xl">
+          {!videoStart ? (
+            <p className="text-2xl italic text-gray-700">
+              Waiting for the movie to start…
+            </p>
+          ) : visibleItems.length === 0 ? (
+            <p className="text-xl italic text-gray-600">No clues for now.</p>
+          ) : (
+            <ul className="w-full space-y-3">
+              {visibleItems.map((e, i) => (
+                <li
+                  key={i}
+                  className="grid grid-cols-[4rem_1fr] gap-4"
+                >
+                  <span className="font-mono text-lg text-right text-black">
+                    {fmtMMSS(e.time)}
+                  </span>
+
+                  {e.kind === "clue" ? (
+                    <span className="font-bold text-black text-lg">{e.text}</span>
+                  ) : (
+                    <span className="text-lg">
+                      <span className="underline text-black">{e.title}</span>
+                      {e.desc && (
+                        <span className="text-gray-800"> — {e.desc}</span>
+                      )}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ---------------------------------- VISUALIZATION PAGE ------------------------------------------
 function VisualizationPage() {
+  const { charTimes }  = useScenarioData();
   const [results, setRes]  = useState([]);
   const [leader, setLead]  = useState([]);
   const [videoStart, setVS] = useState(0);
@@ -281,6 +476,16 @@ function VisualizationPage() {
   const dragging            = useRef(false);
   const VIDEO_ID            = "a3XDry3EwiU";
   const minW                = 260;
+
+  // clock for “has this character appeared yet?”
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!videoStart) return;
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [videoStart]);
+
+  const elapsedSec = videoStart ? (now - videoStart) / 1000 : 0;
 
   // fetch + subscribe to session start
   useEffect(() => {
@@ -371,7 +576,13 @@ function VisualizationPage() {
 
     return {
       data: {
-        labels: IMAGES.map((i) => wrap(i.name)),
+        //labels: IMAGES.map((i) => wrap(i.name)),
+        labels: IMAGES.map((i) => {
+          const appearAt =
+            charTimes.has(normal(i.name)) ? charTimes.get(normal(i.name)) : Infinity;
+          const shown = elapsedSec >= appearAt;
+          return wrap(shown ? i.name : "???");
+        }),
         datasets: [
           {
             label: "%",
@@ -671,7 +882,7 @@ function ResultsPage() {
   // login form
   if (!logged) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <form
           onSubmit={(e) => {
             e.preventDefault();
