@@ -411,6 +411,7 @@ function VoteGrid() {
 
 // ---------------------------------- VISUALIZATION PAGE ------------------------------------------
 function VisualizationPage() {
+  const { charTimes }  = useScenarioData();
   const [results, setRes]  = useState([]);
   const [leader, setLead]  = useState([]);
   const [videoStart, setVS] = useState(0);
@@ -418,6 +419,16 @@ function VisualizationPage() {
   const dragging            = useRef(false);
   const VIDEO_ID            = "a3XDry3EwiU";
   const minW                = 260;
+
+  // clock for “has this character appeared yet?”
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!videoStart) return;
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [videoStart]);
+
+  const elapsedSec = videoStart ? (now - videoStart) / 1000 : 0;
 
   // fetch + subscribe to session start
   useEffect(() => {
@@ -508,7 +519,13 @@ function VisualizationPage() {
 
     return {
       data: {
-        labels: IMAGES.map((i) => wrap(i.name)),
+        //labels: IMAGES.map((i) => wrap(i.name)),
+        labels: IMAGES.map((i) => {
+          const appearAt =
+            charTimes.has(normal(i.name)) ? charTimes.get(normal(i.name)) : Infinity;
+          const shown = elapsedSec >= appearAt;
+          return wrap(shown ? i.name : "???");
+        }),
         datasets: [
           {
             label: "%",
