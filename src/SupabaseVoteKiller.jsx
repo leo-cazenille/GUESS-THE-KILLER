@@ -321,8 +321,8 @@ function VoteGrid() {
         <button
           key={k}
           onClick={() => setTab(k)}
-          className={`px-4 py-2 rounded-t-lg text-xl font-semibold
-            ${tab === k ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}
+          className={`btn-victorian mx-1 px-4 py-2 rounded-t-lg text-xl font-semibold
+            ${tab === k ? "ring-2 ring-yellow-400" : "opacity-80"}
             transition-colors`}
         >
           {label}
@@ -477,7 +477,7 @@ function VisualizationPage() {
   const VIDEO_ID            = "a3XDry3EwiU";
   const minW                = 260;
 
-  // clock for “has this character appeared yet?”
+  // clock for "has this character appeared yet?"
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!videoStart) return;
