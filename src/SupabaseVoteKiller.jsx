@@ -230,7 +230,6 @@ function VoteGrid() {
         .eq("user_name", user)
         .single();
       if (data) {
-        killerMsRef.current = (data.score / 100) * WAIT_MS;
         setSel(data.image_id);
       } 
     })();
@@ -252,12 +251,35 @@ function VoteGrid() {
     return () => clearInterval(id);
   }, [videoStart]);
 
-  // continuous scoring -------------------------------------------------------
   const killerMsRef = useRef(0);
   const lastTickRef = useRef(Date.now());
+  const hydratedRef = useRef(false);
 
+  // Ask Supabase for the previous percentage *before* you start scoring
   useEffect(() => {
-    if (!videoStart) return;
+    if (!user || !videoStart) return;
+  
+    (async () => {
+      const { data } = await supabase
+        .from("scores")
+        .select("score")
+        .eq("user_name", user)
+        .single();
+  
+      if (data) {
+        // 2) convert %  →  milliseconds already spent on the killer
+        killerMsRef.current = (data.score / 100) * WAIT_MS;
+      }
+  
+      // 3) make sure the next dt starts **now**
+      lastTickRef.current = Date.now();
+      hydratedRef.current = true;          // flag that we can now start scoring
+    })();
+  }, [videoStart, user]);
+
+  // continuous scoring -------------------------------------------------------
+  useEffect(() => {
+    if (!videoStart || !hydratedRef.current) return;
 
     const pushScore = async () => {
       const now = Date.now();
