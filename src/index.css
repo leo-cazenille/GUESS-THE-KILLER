@@ -182,10 +182,10 @@ button:focus-visible {
   50%     { box-shadow: 0 0 12px 6px rgba(255,215,0,0.9); }
 }
 
-/* Bouton victorien harmonisé */
+/* Bouton victorien harmonisé (onglet) */
 .btn-victorian {
   background: linear-gradient(145deg, #2d1b2d 60%, #533483 100%);
-  color: #fffbe6;
+  color: #d4af37;
   border: 2px solid #d4af37;
   border-radius: 6px;
   font-family: 'Playfair Display', serif;
@@ -195,12 +195,19 @@ button:focus-visible {
   padding: 0.7em 1.6em;
   font-size: 1.1em;
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-  transition: background 0.2s, color 0.2s, border 0.2s, box-shadow 0.2s;
+  transition: background 0.2s, color 0.2s, border 0.2s, box-shadow 0.2s, opacity 0.2s, text-decoration 0.2s;
   cursor: pointer;
+  opacity: 0.85;
 }
-.btn-victorian:hover, .btn-victorian:focus {
-  background: linear-gradient(145deg, #533483 60%, #d4af37 100%);
-  color: #1a1a2e;
+.btn-victorian.active {
+  background: linear-gradient(145deg, #3a2a3a 60%, #ffe082 100%);
+  color: #d4af37;
   border-color: #ffd700;
-  box-shadow: 0 0 0 3px #ffd70055, 0 4px 16px #d4af3733;
+  opacity: 1;
+  text-decoration: underline;
+  box-shadow: 0 0 0 2px #ffd70055;
+}
+.btn-victorian:hover:not(.active), .btn-victorian:focus:not(.active) {
+  opacity: 1;
+  text-decoration: underline;
 }

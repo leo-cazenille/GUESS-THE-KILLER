@@ -325,7 +325,7 @@ function VoteGrid() {
           key={k}
           onClick={() => setTab(k)}
           className={`btn-victorian mx-1 px-4 py-2 rounded-t-lg text-xl font-semibold
-            ${tab === k ? "ring-2 ring-yellow-400" : "opacity-80"}
+            ${tab === k ? "active" : ""}
             transition-colors`}
         >
           {label}
