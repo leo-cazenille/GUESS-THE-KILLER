@@ -609,6 +609,7 @@ function VisualizationPage() {
 
     // one place to change the colour later if needed
     const histColor = "#fef3c7";   // Tailwind `text-amber-100`
+    const bigTickFont = { size: 32 }; // ≈ double the default
 
     return {
       data: {
@@ -639,6 +640,7 @@ function VisualizationPage() {
             ticks: {
               color: histColor,                 // ← tick label colour
               callback: (v) => `${v}%`,
+              font: bigTickFont,
             },
             grid:   { color: histColor + "55" }, // grid lines
             border: { color: histColor },        // axis line
