@@ -196,6 +196,7 @@ function VoteGrid() {
   const { charTimes, clues, topics } = useScenarioData();
 
   const [user, setUser]      = useState(() => localStorage.getItem("voter_name") || "");
+  const askedRef = useRef(false); // Track if we’ve already prompted
   const [selected, setSel]   = useState(null);
   const [videoStart, setVS]  = useState(0);          // ms epoch
   const [now, setNow]        = useState(Date.now());
@@ -216,7 +217,8 @@ function VoteGrid() {
 
   // ask name once ------------------------------------------------------------
   useEffect(() => {
-    if (!user) {
+    if (!user && !askedRef.current) {
+      askedRef.current = true; // Prevent future prompts
       const n = prompt("Enter your name to vote (unique to avoid duplicates):")?.trim();
       if (n) {
         setUser(n);
