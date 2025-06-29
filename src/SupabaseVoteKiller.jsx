@@ -607,6 +607,9 @@ function VisualizationPage() {
     const totalVotes = counts.reduce((a, b) => a + b, 0) || 1; // avoid /0
     const pct = counts.map((c) => ((c / totalVotes) * 100).toFixed(1));
 
+    // one place to change the colour later if needed
+    const histColor = "#fef3c7";   // Tailwind `text-amber-100`
+
     return {
       data: {
         //labels: IMAGES.map((i) => wrap(i.name)),
@@ -633,11 +636,21 @@ function VisualizationPage() {
           x: {
             beginAtZero: true,
             max: 100,
-            ticks: { callback: (v) => `${v}%` },
+            ticks: {
+              color: histColor,                 // ← tick label colour
+              callback: (v) => `${v}%`,
+            },
+            grid:   { color: histColor + "55" }, // grid lines
+            border: { color: histColor },        // axis line
           },
           y: {
-              ticks: { font: { size: 16, weight: "bold" } }
-          }
+            ticks: {
+              color: histColor,                 // ← tick label colour
+              font: { size: 16, weight: "bold" }
+            },
+            grid:   { color: histColor + "55" }, // grid lines
+            border: { color: histColor },        // axis line
+          },
         },
       },
     };
