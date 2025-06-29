@@ -740,7 +740,7 @@ function VisualizationPage() {
               <p className="text-3xl italic text-amber-200 font-['Crimson_Text']">No scores yet</p>
             ) : (
               <ol className="flex-1 w-full overflow-y-auto flex flex-col gap-2">
-                {leader.map((s, idx) => (
+                {leader.slice(0, 15).map((s, idx) => (
                   <li
                     key={s.user_name}
                     className="flex justify-between px-3 py-2 bg-slate-700/50 rounded-md text-amber-100 border border-slate-600"
