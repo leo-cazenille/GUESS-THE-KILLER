@@ -229,7 +229,10 @@ function VoteGrid() {
         .select("image_id")
         .eq("user_name", user)
         .single();
-      if (data) setSel(data.image_id);
+      if (data) {
+        killerMsRef.current = (data.score / 100) * WAIT_MS;
+        setSel(data.image_id);
+      } 
     })();
   }, [user]);
 
