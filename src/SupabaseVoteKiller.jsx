@@ -200,6 +200,11 @@ function VoteGrid() {
   const [now, setNow]        = useState(Date.now());
   const [tab, setTab]        = useState("vote");     // "vote" | "info"
 
+  const killerMsRef = useRef(0);
+  const lastTickRef = useRef(Date.now());
+  const [hydrated, setHydrated] = useState(false);
+
+
   // clock --------------------------------------------------------------------
   useEffect(() => {
     if (!videoStart) return;
@@ -219,6 +224,13 @@ function VoteGrid() {
       }
     }
   }, [user]);
+
+  /* When videoStart changes, wipe the in-memory counter */
+  useEffect(() => {
+    if (!videoStart) return;          // still waiting for the movie
+    killerMsRef.current = 0;          // ← hard reset
+    lastTickRef.current = Date.now(); //     & restart the stopwatch
+  }, [videoStart]);
 
   // fetch previous vote ------------------------------------------------------
   useEffect(() => {
@@ -250,10 +262,6 @@ function VoteGrid() {
     const id = setInterval(poll, ONE_SECOND);
     return () => clearInterval(id);
   }, [videoStart]);
-
-  const killerMsRef = useRef(0);
-  const lastTickRef = useRef(Date.now());
-  const [hydrated, setHydrated] = useState(false);
 
   // Ask Supabase for the previous percentage *before* you start scoring
   useEffect(() => {
