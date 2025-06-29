@@ -253,7 +253,7 @@ function VoteGrid() {
 
   const killerMsRef = useRef(0);
   const lastTickRef = useRef(Date.now());
-  const hydratedRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
 
   // Ask Supabase for the previous percentage *before* you start scoring
   useEffect(() => {
@@ -273,13 +273,13 @@ function VoteGrid() {
   
       // 3) make sure the next dt starts **now**
       lastTickRef.current = Date.now();
-      hydratedRef.current = true;          // flag that we can now start scoring
+      setHydrated(true);
     })();
   }, [videoStart, user]);
 
   // continuous scoring -------------------------------------------------------
   useEffect(() => {
-    if (!videoStart || !hydratedRef.current) return;
+    if (!videoStart || !hydrated) return;
 
     const pushScore = async () => {
       const now = Date.now();
@@ -302,7 +302,7 @@ function VoteGrid() {
     }, 3_000);
 
     return () => clearInterval(id);
-  }, [videoStart, selected, user]);
+  }, [videoStart, selected, user, hydrated]);
 
   // vote handler -------------------------------------------------------------
   const vote = async (id) => {
@@ -707,7 +707,7 @@ function VisualizationPage() {
                   Live vote share
                 </p>
                 <div className="flex-1 overflow-y-auto">
-                  {/* 400 px high canvas fits nicely in sidebar */}
+                  {/* 800 px high canvas fits nicely in sidebar */}
                   <div style={{ minHeight: 800 }}>
                     <Bar
                       data={fullHist.data}
